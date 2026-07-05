@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>H2APK — HTML/URL to APK</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{-webkit-tap-highlight-color:transparent;outline:none;border:none;box-shadow:none;box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF Mono","Fira Code",Menlo,Consolas,monospace;
+  background:#000;color:rgba(255,255,255,0.55);min-height:100vh;
+  line-height:1.6
+}
+.wrap{max-width:1100px;margin:0 auto;padding:clamp(24px,4vw,64px) clamp(16px,3vw,48px) 80px}
+.hero{text-align:center;margin-bottom:48px}
+.hero h1{font-size:3rem;font-weight:900;line-height:1;color:#fff;margin-bottom:12px}
+.hero p{color:rgba(255,255,255,0.55);font-size:.75rem;font-weight:400}
+.section{
+  background:#0d0d0d;border:1px solid rgba(255,255,255,0.08);border-radius:12px;
+  padding:28px;margin-bottom:24px;transition:border-color .3s,box-shadow .3s;
+  animation:fadeUp .5s ease both
+}
+.section:nth-child(2){animation-delay:.1s}
+.section:nth-child(3){animation-delay:.15s}
+.section:nth-child(4){animation-delay:.2s}
+.section:nth-child(5){animation-delay:.25s}
+.section:hover{border-color:rgba(255,255,255,0.2);box-shadow:0 0 30px rgba(255,255,255,0.03)}
+.section-title{font-size:.75rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.55);margin-bottom:18px;font-weight:400}
+.row{display:flex;gap:14px}
+.row>div{flex:1}
+.app-details-grid{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.app-details-grid>.version-field{flex:0 0 calc(50% - 7px)}
+.app-details-grid>:not(.version-field):not(.app-icon-area){flex:0 0 calc(50% - 7px)}
+.app-icon-area{flex:1 1 calc(50% - 7px);display:flex;flex-direction:column}
+label{font-size:.75rem;color:rgba(255,255,255,0.55);display:block;margin-bottom:6px;font-weight:400}
+input,textarea{
+  width:100%;background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:10px;
+  padding:12px 14px;color:rgba(255,255,255,0.8);font-size:.75rem;
+  transition:border-color .25s
+}
+input:focus,textarea:focus{outline:none;border-color:rgba(255,255,255,0.3);box-shadow:0 0 0 3px rgba(255,255,255,0.06)}
+textarea{min-height:180px;font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF Mono","Fira Code",Menlo,Consolas,monospace;line-height:1.6;font-size:.75rem}
+.small-area{min-height:80px}
+input[type=url]{font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF Mono","Fira Code",Menlo,Consolas,monospace;font-size:.75rem}
+.mode-tabs{display:flex;gap:8px;margin-bottom:24px;justify-content:center}
+.mode-tab{
+  padding:8px 20px;text-align:center;font-size:.75rem;font-weight:400;
+  color:rgba(255,255,255,0.55);cursor:pointer;border-radius:20px;transition:all .25s;
+  border:1px solid rgba(255,255,255,0.06);background:transparent
+}
+.mode-tab.active{background:rgba(255,255,255,0.08);color:#fff;border-color:rgba(255,255,255,0.15)}
+.mode-tab:hover:not(.active){border-color:rgba(255,255,255,0.15);color:rgba(255,255,255,0.7)}
+.hidden{display:none}
+.icon-upload{display:flex;align-items:center;gap:8px}
+.icon-preview{
+  width:42px;height:42px;border-radius:8px;border:2px dashed rgba(255,255,255,0.1);
+  background:#000;display:flex;align-items:center;justify-content:center;
+  overflow:hidden;flex-shrink:0;transition:border-color .3s
+}
+.icon-preview.has-icon{border-style:solid;border-color:rgba(255,255,255,0.25)}
+.icon-preview img{width:100%;height:100%;object-fit:cover}
+.icon-preview .empty{color:#555;font-size:.55rem;text-align:center}
+.icon-btn{
+  padding:11px 13px;background:transparent;border:1px solid rgba(255,255,255,0.1);
+  border-radius:8px;color:rgba(255,255,255,0.55);font-size:.75rem;font-weight:400;
+  cursor:pointer;transition:all .25s
+}
+.icon-btn:hover{border-color:rgba(255,255,255,0.3);color:rgba(255,255,255,0.8)}
+#iconFile{display:none}
+.preview-btn{padding:4px 12px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:rgba(255,255,255,0.45);font-size:.7rem;cursor:pointer;font-family:inherit;transition:all .25s}
+.preview-btn:not(.active){pointer-events:none;opacity:0.35}
+.preview-btn:hover{border-color:rgba(255,255,255,0.3);color:#fff}
+.preview-btn.active{color:#fff;border-color:rgba(255,255,255,0.3)}
+.check-row{display:flex;align-items:center;gap:8px;margin-top:14px}
+.check-row .checkbox{
+  --size:1;--bg:transparent;--brdr:rgba(255,255,255,0.2);
+  --brdr-actv:#3a3a3a;--brdr-hovr:rgba(255,255,255,0.35);
+  --dur:calc((var(--size)/2)*0.6s);
+  display:inline-block;width:22px;height:22px;position:relative;flex-shrink:0
+}
+.check-row .checkbox input{
+  -webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent;
+  cursor:pointer;background:var(--bg);
+  border-radius:4px;
+  border:calc(var(--newBrdr,var(--size))*1px) solid;
+  color:var(--newBrdrClr,var(--brdr));outline:none;margin:0;padding:0;
+  transition:all calc(var(--dur)/3) linear;
+  display:block;width:100%;height:100%
+}
+.check-row .checkbox input:hover,
+.check-row .checkbox input:checked{--newBrdr:calc(var(--size)*2)}
+.check-row .checkbox input:hover{--newBrdrClr:var(--brdr-hovr)}
+.check-row .checkbox input:checked{--newBrdrClr:var(--brdr-actv);transition-delay:calc(var(--dur)/1.3)}
+.check-row .checkbox input:checked+svg{--dashArray:16 93;--dashOffset:109}
+.check-row .checkbox svg{
+  fill:none;left:0;pointer-events:none;stroke:var(--stroke,var(--brdr-actv));
+  stroke-dasharray:var(--dashArray,93);stroke-dashoffset:var(--dashOffset,94);
+  stroke-linecap:round;stroke-linejoin:round;stroke-width:2px;
+  top:0;transition:stroke-dasharray var(--dur),stroke-dashoffset var(--dur);
+  display:block;width:100%;height:100%;position:absolute
+}
+.radio-label{font-size:.72rem;color:rgba(255,255,255,0.7);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.radio-label input[type=radio]{accent-color:#fff}
+.check-row label{font-size:.75rem;color:rgba(255,255,255,0.55)}
+.build-btn{
+  width:100%;padding:15px;background:#fff;
+  color:#000;border:none;border-radius:12px;font-size:.875rem;font-weight:700;
+  cursor:pointer;transition:all .3s;margin-top:4px;
+  font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF Mono","Fira Code",Menlo,Consolas,monospace
+}
+.build-btn:hover{transform:translateY(-1px);box-shadow:0 0 40px rgba(255,255,255,0.2)}
+.build-btn:disabled{opacity:.35;transform:none;box-shadow:none;cursor:not-allowed}
+#status{
+  margin-top:16px;padding:14px 18px;border-radius:10px;font-size:.75rem;
+  display:none;font-weight:400
+}
+#status.building{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.05);color:#ccc;border:1px solid rgba(255,255,255,0.1)}
+#status.done{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.05);color:#ccc;border:1px solid rgba(255,255,255,0.1)}
+#status.failed{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.03);color:#999;border:1px solid rgba(255,255,255,0.06)}
+.upload-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed rgba(255,255,255,0.12);border-radius:10px;padding:32px;cursor:pointer;transition:border-color .25s;text-align:center;color:rgba(255,255,255,0.45);font-size:.75rem}
+.upload-zone:hover{border-color:rgba(255,255,255,0.3)}
+.upload-icon{font-size:1.5rem;color:rgba(255,255,255,0.2)}
+#fileList span{display:block;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+#fileList span.missing{color:#ff5f57}
+.pulse-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.done .pulse-dot{background:#28c840;animation:pulse 2s infinite}
+.building .pulse-dot{background:#7c5cff;animation:pulse 1.2s infinite}
+.failed .pulse-dot{background:#ff5f57}
+.term-chrome{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.term-chrome span{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.term-chrome .tc-r{background:#ff5f57}
+.term-chrome .tc-y{background:#febc2e}
+.term-chrome .tc-g{background:#28c840}
+#logHeader{
+  display:none;background:#000;padding:14px 16px 0 16px;
+  border:1px solid rgba(255,255,255,0.06);border-bottom:none;
+  border-radius:10px 10px 0 0;margin-top:10px
+}
+#log{
+  font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF Mono","Fira Code",Menlo,Consolas,monospace;font-size:.75rem;line-height:1.7;
+  white-space:pre-wrap;overflow-y:auto;scroll-behavior:smooth;
+  background:#000;padding:0 16px 16px 16px;border-radius:0 0 10px 10px;
+  display:none;color:#777;border:1px solid rgba(255,255,255,0.06);
+  border-top:none;max-height:240px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.08) transparent
+}
+.dl-box{display:none;margin-top:16px;text-align:center}
+.dl-box a{
+  display:inline-block;padding:13px 36px;background:rgba(255,255,255,0.06);color:#ccc;
+  border:1px solid rgba(255,255,255,0.12);border-radius:10px;font-weight:600;
+  text-decoration:none;font-size:.875rem;font-weight:700;transition:all .25s
+}
+.dl-box a:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2)}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes pulse{
+  0%,100%{opacity:1;box-shadow:0 0 0 0 currentColor}
+  50%{opacity:.5;box-shadow:0 0 8px 1px currentColor}
+}
+#status .spinner{
+  width:18px;height:18px;flex-shrink:0;
+  animation:spin 1s linear infinite
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+input[type=color]{
+  width:40px;height:34px;padding:2px;border-radius:8px;
+  border:1px solid rgba(255,255,255,0.1);cursor:pointer;background:transparent
+}
+input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+input[type=color]::-webkit-color-swatch{border-radius:6px;border:none}
+
+.slider-wrap{
+  position:relative;
+  width:calc(100% - 24px);
+  margin:12px auto 14px auto;
+  height:24px;
+  display:flex;
+  align-items:center;
+}
+.slider-track{
+  position:absolute;
+  left:10px;
+  right:10px;
+  height:6px;
+  background:#333 !important;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:3px;
+  pointer-events:none;
+}
+.slider-fill{
+  height:100%;
+  width:var(--p,60%);
+  background:#888 !important;
+  border-radius:3px;
+}
+.edge-slider{
+  -webkit-appearance:none;appearance:none;width:100%;height:100%;background:transparent !important;margin:0;padding:0;cursor:pointer;
+  position:relative;z-index:2;color-scheme:dark
+}
+.edge-slider:focus{outline:none;box-shadow:none}
+.edge-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;
+  background:#ffffff !important;background-color:#ffffff !important;
+  box-shadow:0 0 10px rgba(0,0,0,0.9);cursor:pointer
+}
+.edge-slider::-moz-range-thumb{
+  width:18px;height:18px;border:none;border-radius:50%;
+  background:#ffffff !important;background-color:#ffffff !important;
+  box-shadow:0 0 10px rgba(0,0,0,0.9);cursor:pointer
+}
+
+@media(min-width:768px){
+  .section{padding:36px 40px;margin-bottom:28px}
+  .hero{margin-bottom:64px}
+  textarea{min-height:240px}
+  .small-area{min-height:100px}
+  .mode-tab{padding:10px 28px}
+  .icon-preview{width:52px;height:52px}
+  .build-btn{padding:16px;border-radius:14px}
+  #status{padding:16px 22px}
+  #log{max-height:320px}
+  .upload-zone{padding:48px}
+  .check-row{margin-top:10px}
+  .row{gap:20px}
+  .row>div>input{padding:14px 16px}
+  .row>div[style*="flex"]{flex:1!important}
+  .app-details-grid>.app-icon-area{flex:1 1 100%}
+  .app-details-grid>.version-field{flex:0 0 calc(33.333% - 10px)}
+  .app-details-grid>:not(.version-field):not(.app-icon-area){flex:1 1 calc(33.333% - 10px)}
+}
+@media(min-width:1200px){
+  .wrap{max-width:1200px}
+  .section{padding:40px 48px;margin-bottom:32px}
+  textarea{min-height:280px}
+}
+#previewPane{
+  position:fixed;inset:0;z-index:9999;background:#0a0a0a;
+  display:none;flex-direction:column
+}
+#previewPane.open{display:flex}
+#previewBar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 18px;background:rgba(255,255,255,0.04);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  color:rgba(255,255,255,0.55);font-size:.75rem
+}
+#previewBar button{
+  background:transparent;border:1px solid rgba(255,255,255,0.1);
+  border-radius:6px;color:rgba(255,255,255,0.5);cursor:pointer;
+  font-size:.7rem;padding:6px 12px;font-family:inherit;
+  transition:all .25s
+}
+#previewBar button:hover{border-color:rgba(255,255,255,0.3);color:#fff}
+#previewFrame{flex:1;width:100%;border:none;background:#fff}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="cb-30" viewBox="0 0 22 22">
+    <path fill="none" stroke="currentColor" d="M5.5,11.3L9,14.8L20.2,3.3l0,0c-0.5-1-1.5-1.8-2.7-1.8h-13c-1.7,0-3,1.3-3,3v13c0,1.7,1.3,3,3,3h13c1.7,0,3-1.3,3-3v-13c0-0.4-0.1-0.8-0.3-1.2"/>
+  </symbol>
+</svg>
+<div class="wrap">
+<div class="hero">
+  <h1>H2APK</h1>
+  <p>Convert HTML or a website URL into an Android APK in seconds.</p>
+</div>
+
+<div class="mode-tabs">
+  <div class="mode-tab active" id="tabHtml" onclick="switchMode('html')">HTML</div>
+  <div class="mode-tab" id="tabUrl" onclick="switchMode('url')">Website URL</div>
+  <div class="mode-tab" id="tabUpload" onclick="switchMode('upload')">Upload</div>
+</div>
+
+<div class="section">
+  <div class="section-title">App Details</div>
+  <div class="app-details-grid">
+      <div><label>App Name</label><input id="appName" placeholder="My App"></div>
+      <div><label>Package ID</label><input id="pkg" placeholder="com.example.app"></div>
+      <div class="version-field"><label>Version</label><input type="text" id="version" placeholder="1.0"></div>
+    <div class="app-icon-area">
+      <label>App Icon</label>
+      <div class="icon-upload">
+        <div class="icon-preview" id="iconPreview"><span class="empty">icon</span></div>
+        <button class="icon-btn" onclick="document.getElementById('iconFile').click()">Choose PNG</button>
+      </div>
+      <input type="file" id="iconFile" accept="image/png" onchange="previewIcon(this)">
+    </div>
+  </div>
+  <button onclick="document.getElementById('advancedOpts').classList.toggle('hidden');this.textContent=this.textContent==='+ Advanced'?'- Advanced':'+ Advanced'" style="margin-top:14px;padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.35);font-size:.7rem;cursor:pointer;font-family:inherit;transition:all .25s"
+    onmouseenter="this.style.borderColor='rgba(255,255,255,0.2)';this.style.color='rgba(255,255,255,0.7)'"
+    onmouseleave="this.style.borderColor='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.35)'">+ Advanced</button>
+  <div id="advancedOpts" class="hidden">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:16px">
+      <label>Theme Color</label>
+      <input type="color" id="themeColor" value="#1C1C1E" oninput="document.getElementById('themeHex').value=this.value">
+      <input type="text" id="themeHex" value="#1C1C1E" oninput="var c=this.value;if(/^#[0-9a-f]{6}$/i.test(c))document.getElementById('themeColor').value=c" style="width:90px;background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.8);padding:8px 10px;font-size:.72rem;font-family:inherit">
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="pullRefresh" checked><svg><use href="#cb-30"></use></svg></span>
+      <label for="pullRefresh">Pull-Down Refresh</label>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="hideScrollbars" checked><svg><use href="#cb-30"></use></svg></span>
+      <label for="hideScrollbars">Hide scrollbars</label>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="transparentNav"><svg><use href="#cb-30"></use></svg></span>
+      <label for="transparentNav">Transparent navigation bar</label>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="pinchZoom"><svg><use href="#cb-30"></use></svg></span>
+      <label for="pinchZoom">Pinch to zoom</label>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="disableCopy"><svg><use href="#cb-30"></use></svg></span>
+      <label for="disableCopy">Disable copy text</label>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="splashEnabled" onchange="document.getElementById('splashOpts').classList.toggle('hidden',!this.checked)"><svg><use href="#cb-30"></use></svg></span>
+      <label for="splashEnabled">Splash screen</label>
+    </div>
+    <div id="splashOpts" class="hidden" style="margin-top:6px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px">
+        <label style="white-space:nowrap">Duration (s)</label>
+        <input type="number" id="splashDuration" value="2" min="1" max="10" step="0.5" style="width:60px;background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.8);padding:6px 8px;font-size:.72rem;font-family:inherit">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <label>Background</label>
+        <input type="color" id="splashColor" value="#000000" oninput="document.getElementById('splashHex').value=this.value">
+        <input type="text" id="splashHex" value="#000000" oninput="var c=this.value;if(/^#[0-9a-f]{6}$/i.test(c))document.getElementById('splashColor').value=c" style="width:80px;background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.8);padding:6px 8px;font-size:.72rem;font-family:inherit">
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <label style="white-space:nowrap">Animation</label>
+        <select id="splashAnimation" style="background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.8);padding:6px 8px;font-size:.72rem;font-family:inherit">
+          <option value="fade">Fade in</option>
+          <option value="slide">Slide up</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <label style="margin:0">Image size</label>
+          <span id="splashSizeVal" style="font-size:.7rem;color:#fff;font-weight:700">60%</span>
+        </div>
+        <div class="slider-wrap" style="--p:60%">
+          <div class="slider-track"><div class="slider-fill"></div></div>
+          <input type="range" id="splashImageSize" class="edge-slider" min="0" max="100" value="60" oninput="if(this.value<20)this.value=20;document.getElementById('splashSizeVal').textContent=this.value+'%';this.parentElement.style.setProperty('--p',this.value+'%')">
+        </div>
+      </div>
+      <div>
+        <label style="margin-bottom:4px">Image</label>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:4px">
+          <label class="radio-label"><input type="radio" name="splashImgSrc" value="icon" checked onchange="toggleSplashUpload()"> App icon</label>
+          <label class="radio-label"><input type="radio" name="splashImgSrc" value="custom" onchange="toggleSplashUpload()"> Custom</label>
+        </div>
+        <input type="file" id="splashImageFile" accept="image/png" onchange="previewSplash(this)" style="display:none;margin-top:8px;color:rgba(255,255,255,0.5);font-size:.7rem">
+      </div>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="releaseSign" onchange="document.getElementById('signOpts').classList.toggle('hidden',!this.checked)"><svg><use href="#cb-30"></use></svg></span>
+      <label for="releaseSign">Release signing (custom keystore)</label>
+    </div>
+    <div id="signOpts" class="hidden" style="margin-top:6px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden">
+      <div style="margin-bottom:10px">
+        <label>Keystore (.jks/.keystore file or base64)</label>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button type="button" id="ksFileBtn" onclick="toggleKeystoreMode('file')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2)">File</button>
+          <button type="button" id="ksPasteBtn" onclick="toggleKeystoreMode('paste')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:transparent;color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.08)">Paste base64</button>
+        </div>
+        <input type="file" id="keystoreFile" accept=".jks,.keystore" onchange="loadKeystore(this)" style="margin-top:6px;color:rgba(255,255,255,0.5);font-size:.7rem">
+        <textarea id="keystoreText" placeholder="Paste base64-encoded keystore here..." style="display:none;margin-top:6px;min-height:80px;font-size:.68rem" oninput="keystoreBase64=this.value.trim()"></textarea>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <div style="flex:1 1 120px"><label>Keystore password *</label><input type="password" id="ksPass" placeholder="required"></div>
+        <div style="flex:1 1 90px"><label>Key alias *</label><input type="text" id="keyAlias" placeholder="required"></div>
+        <div style="flex:1 1 120px"><label>Key password</label><input type="password" id="keyPass" placeholder="defaults to keystore password"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="htmlSection">
+  <div class="section">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <span style="font-size:.75rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,0.55);font-weight:400">HTML Content</span>
+      <button onclick="preview()" class="preview-btn">Preview</button>
+    </div>
+    <textarea id="html" placeholder="<h1>Hello World</h1>
+<p>Your HTML content here...</p>"></textarea>
+    <button onclick="document.getElementById('extraInputs').classList.toggle('hidden');this.textContent=this.textContent==='+ CSS/JS'?'- CSS/JS':'+ CSS/JS'" style="margin-top:10px;padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.35);font-size:.7rem;cursor:pointer;font-family:inherit;transition:all .25s"
+      onmouseenter="this.style.borderColor='rgba(255,255,255,0.2)';this.style.color='rgba(255,255,255,0.7)'"
+      onmouseleave="this.style.borderColor='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.35)'">+ CSS/JS</button>
+    <div id="extraInputs" class="hidden">
+      <label style="margin-top:14px">CSS (optional)</label>
+      <textarea id="css" class="small-area" placeholder="body { background: #111; color: #fff; }"></textarea>
+      <label style="margin-top:14px">JavaScript (optional)</label>
+      <textarea id="js" class="small-area" placeholder="console.log('loaded');"></textarea>
+    </div>
+  </div>
+</div>
+
+<div class="section hidden" id="urlSection">
+  <div class="section-title">Website URL</div>
+  <input type="url" id="url" placeholder="https://example.com">
+  <div class="check-row">
+    <span class="checkbox"><input type="checkbox" id="blockAds" checked><svg><use href="#cb-30"></use></svg></span>
+    <label for="blockAds">Block ads & prevent app redirects</label>
+  </div>
+  <div class="check-row">
+    <span class="checkbox"><input type="checkbox" id="adguardDns"><svg><use href="#cb-30"></use></svg></span>
+    <label for="adguardDns">AdGuard DNS (blocks ads &amp; trackers)</label>
+  </div>
+</div>
+
+<div class="section hidden" id="uploadSection">
+  <div class="section-title">Upload Project Files</div>
+  <p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-bottom:16px">Requires <b style="color:#fff">index.html</b>. CSS and JS files are optional.</p>
+  <label class="upload-zone" for="projectFiles">
+    <span class="upload-icon">+</span>
+    <span>Select files or drop here</span>
+    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js</span>
+  </label>
+  <input type="file" id="projectFiles" accept=".html,.css,.js" multiple onchange="handleFiles(this)" style="display:none">
+  <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
+</div>
+
+<button class="build-btn" id="btn" onclick="build()">Build APK</button>
+
+<div id="status"></div>
+<div id="logHeader"><div class="term-chrome"><span class="tc-r"></span><span class="tc-y"></span><span class="tc-g"></span></div></div>
+<div id="log"></div>
+<div class="dl-box" id="dl"></div>
+
+</div>
+
+<div id="previewPane">
+  <div id="previewBar">
+    <span>Preview</span>
+    <div style="display:flex;gap:6px">
+      <button onclick="fullscreenPreview()" title="Fullscreen">&#x26F6;</button>
+      <button onclick="closePreview()" title="Close">&#x2715;</button>
+    </div>
+  </div>
+  <iframe id="previewFrame" allow="fullscreen"></iframe>
+</div>
+
+<script>
+let iconBase64='';
+let keystoreBase64='';
+let currentMode='html';
+let uploadedFiles={};
+
+function previewIcon(input){
+  const f=input.files[0],p=document.getElementById('iconPreview');
+  if(!f){p.className='icon-preview';p.innerHTML='<span class="empty">icon</span>';iconBase64='';return}
+  const reader=new FileReader();
+  reader.onload=function(){
+    p.className='icon-preview has-icon';
+    p.innerHTML='<img src="'+reader.result+'">';
+    iconBase64=reader.result.split(',')[1];
+  };
+  reader.readAsDataURL(f);
+}
+
+let ksMode='file';
+function toggleKeystoreMode(m){
+  ksMode=m;
+  const fb=document.getElementById('ksFileBtn'),pb=document.getElementById('ksPasteBtn');
+  fb.style.background=m==='file'?'rgba(255,255,255,0.1)':'transparent';
+  fb.style.color=m==='file'?'#fff':'rgba(255,255,255,0.4)';
+  fb.style.borderColor=m==='file'?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.08)';
+  pb.style.background=m==='paste'?'rgba(255,255,255,0.1)':'transparent';
+  pb.style.color=m==='paste'?'#fff':'rgba(255,255,255,0.4)';
+  pb.style.borderColor=m==='paste'?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.08)';
+  document.getElementById('keystoreFile').style.display=m==='file'?'block':'none';
+  document.getElementById('keystoreText').style.display=m==='paste'?'block':'none';
+}
+
+function loadKeystore(input){
+  const f=input.files[0];
+  if(!f){keystoreBase64='';return}
+  const reader=new FileReader();
+  reader.onload=function(){keystoreBase64=reader.result.split(',')[1]};
+  reader.readAsDataURL(f);
+  document.getElementById('keystoreText').value='';
+}
+
+let splashImageBase64='';
+function toggleSplashUpload(){
+  const fi=document.getElementById('splashImageFile');
+  fi.style.display=document.querySelector('input[name="splashImgSrc"]:checked').value==='custom'?'block':'none';
+}
+function previewSplash(input){
+  const f=input.files[0];
+  if(!f){splashImageBase64='';return}
+  const reader=new FileReader();
+  reader.onload=function(){splashImageBase64=reader.result.split(',')[1];};
+  reader.readAsDataURL(f);
+}
+
+function handleFiles(input){
+  uploadedFiles={};
+  const fl=document.getElementById('fileList');
+  if(!input.files.length){fl.innerHTML='';return}
+  let pending=input.files.length;
+  let list=[];
+  for(const f of input.files){
+    const reader=new FileReader();
+    reader.onload=function(){
+      uploadedFiles[f.name]=reader.result;
+      list.push(f.name);
+      pending--;
+      if(!pending){
+        let html='';
+        for(const name of list){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
+        if(!uploadedFiles['index.html']){html+='<span class="missing">missing: index.html</span>';}
+        fl.innerHTML=html;
+      }
+    };
+    reader.readAsText(f);
+  }
+}
+
+function switchMode(m){
+  currentMode=m;
+  document.getElementById('tabHtml').className='mode-tab'+(m==='html'?' active':'');
+  document.getElementById('tabUrl').className='mode-tab'+(m==='url'?' active':'');
+  document.getElementById('tabUpload').className='mode-tab'+(m==='upload'?' active':'');
+  document.getElementById('htmlSection').className=m==='html'?'':'hidden';
+  document.getElementById('urlSection').className=m==='url'?'section':'section hidden';
+  document.getElementById('uploadSection').className=m==='upload'?'section':'section hidden';
+}
+
+async function build(){
+  const btn=document.getElementById('btn'),st=document.getElementById('status'),
+        log=document.getElementById('log'),dl=document.getElementById('dl');
+  btn.disabled=true;
+  st.className='building';
+  st.innerHTML='<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".2"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/></svg> Building APK...';
+  log.style.display='none';dl.className='dl-box';dl.innerHTML='';
+
+  const body={
+    app_name: document.getElementById('appName').value||'MyApp',
+    package_name: document.getElementById('pkg').value||'com.h2a.app',
+    icon: iconBase64,
+    pull_refresh: document.getElementById('pullRefresh').checked,
+    theme_color: document.getElementById('themeColor').value,
+    transparent_nav: document.getElementById('transparentNav').checked,
+    adguard_dns: document.getElementById('adguardDns').checked,
+    zoom_enabled: document.getElementById('pinchZoom').checked,
+    disable_copy_text: document.getElementById('disableCopy').checked,
+    hide_scrollbars: document.getElementById('hideScrollbars').checked,
+    splash_enabled: document.getElementById('splashEnabled').checked,
+    splash_duration: parseFloat(document.getElementById('splashDuration').value)*1000,
+    splash_color: document.getElementById('splashColor').value,
+    splash_image: splashImageBase64,
+    splash_use_icon: document.querySelector('input[name="splashImgSrc"]:checked').value==='icon',
+    splash_image_size: parseInt(document.getElementById('splashImageSize').value),
+    splash_animation: document.getElementById('splashAnimation').value,
+    version: document.getElementById('version').value
+  };
+  if(document.getElementById('releaseSign').checked && keystoreBase64){
+    body.keystore=keystoreBase64;
+    body.ks_pass=document.getElementById('ksPass').value;
+    body.key_alias=document.getElementById('keyAlias').value;
+    body.key_pass=document.getElementById('keyPass').value;
+  }
+  if(currentMode==='html'){
+    body.html=document.getElementById('html').value;
+    body.css=document.getElementById('css').value;
+    body.js=document.getElementById('js').value;
+  }else if(currentMode==='upload'){
+    if(!uploadedFiles['index.html']){st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Missing index.html';btn.disabled=false;return}
+    body.html=uploadedFiles['index.html'];
+    body.css='';body.js='';
+    for(const name in uploadedFiles){
+      const l=name.toLowerCase();
+      if(l==='index.html')continue;
+      if(l.endsWith('.css'))body.css+=uploadedFiles[name]+'\n';
+      if(l.endsWith('.js'))body.js+=uploadedFiles[name]+'\n';
+    }
+  }else{
+    body.url=document.getElementById('url').value;
+    body.block_ads=document.getElementById('blockAds').checked;
+  }
+
+  try{
+    const r=await fetch('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!d.success){st.className='failed';st.innerHTML='<span class="pulse-dot"></span>'+d.error;btn.disabled=false;return}
+    streamLog(d.build_id);
+  }catch(e){
+    st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Network error: '+e.message;btn.disabled=false;
+  }
+}
+
+function streamLog(id){
+  const st=document.getElementById('status'),log=document.getElementById('log'),
+        lh=document.getElementById('logHeader'),dl=document.getElementById('dl'),
+        btn=document.getElementById('btn');
+  st.className='building';
+  st.innerHTML='<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".2"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/></svg> Building...';
+  st.style.display='flex';
+  lh.style.display='block';
+  log.style.display='block';
+  log.innerHTML='';
+  window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+
+  const es=new EventSource('/api/log/'+id);
+  let lines=[];
+  es.onmessage=function(e){
+    lines.push(e.data);
+    log.innerHTML=lines.map(l=>l.replace(/</g,'&lt;').replace(/>/g,'&gt;')).join('\n');
+    log.scrollTop=log.scrollHeight;
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  };
+  es.addEventListener('done',function(e){
+    es.close();
+    st.className='done';st.innerHTML='<span class="pulse-dot"></span>Build complete!';
+    dl.innerHTML='<a href="/api/download/'+id+'" download>Download '+e.data+'</a>';
+    dl.className='dl-box';dl.style.display='block';
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    btn.disabled=false;
+  });
+  es.addEventListener('failed',function(e){
+    es.close();
+    st.className='failed';st.innerHTML='<span class="pulse-dot"></span>'+(e.data||'Build failed');
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    btn.disabled=false;
+  });
+  es.onerror=function(){
+    es.close();
+    st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Connection lost';
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+    btn.disabled=false;
+  };
+}
+
+document.getElementById('html').addEventListener('input',function(){
+  var btn=document.querySelector('.preview-btn');
+  if(this.value.trim()) btn.classList.add('active');
+  else btn.classList.remove('active');
+});
+
+function preview(){
+  var ta=document.getElementById('html');
+  if(!ta.value.trim())return;
+  var h=ta.value;
+  var c=document.getElementById('css').value||'';
+  var j=document.getElementById('js').value||'';
+  var blob=new Blob(['<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>',c,'</style></head><body>',h,'<script>',j,'<\/script></body></html>'],{type:'text/html'});
+  var url=URL.createObjectURL(blob);
+  document.getElementById('previewFrame').src=url;
+  document.getElementById('previewPane').classList.add('open');
+}
+
+function closePreview(){
+  document.getElementById('previewPane').classList.remove('open');
+  document.getElementById('previewFrame').src='about:blank';
+}
+
+function fullscreenPreview(){
+  var p=document.getElementById('previewPane');
+  if(document.fullscreenElement) document.exitFullscreen();
+  else p.requestFullscreen();
+}
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&document.getElementById('previewPane').classList.contains('open')){
+    closePreview();
+  }
+});
+</script>
+</body>
+</html>

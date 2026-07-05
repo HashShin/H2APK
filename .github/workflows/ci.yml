@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android SDK tools
+        run: |
+          sudo apt update -qq
+          sudo apt install -y android-sdk-build-tools
+
+      - name: Run setup.sh
+        run: bash setup.sh
+
+      - name: Verify Go build
+        run: go build -o /dev/null .

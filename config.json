@@ -1,0 +1,6 @@
+{
+  "port": "8080",
+  "d8_jar": "/data/data/com.termux/files/usr/share/java/d8.jar",
+  "apksigner_jar": "/data/data/com.termux/files/usr/share/java/apksigner.jar",
+  "android_jar": ""
+}

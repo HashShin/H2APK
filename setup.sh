@@ -1,0 +1,154 @@
+#!/bin/bash
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+say()  { echo -e "${GREEN}==>${NC} $1"; }
+warn() { echo -e "${RED}==>${NC} $1"; }
+
+echo -e "${CYAN}  H2APK dependency setup${NC}"
+echo  "  ─────────────────────"
+echo
+
+# ── OS detection ──────────────────────────────────────────────
+OS="unknown"
+if [ -d /data/data/com.termux/files/usr ]; then
+  OS="termux"
+elif [ -f /etc/os-release ]; then
+  . /etc/os-release
+  case "$ID" in
+    ubuntu|debian) OS="debian" ;;
+    arch|manjaro)   OS="arch" ;;
+    fedora)         OS="fedora" ;;
+  esac
+fi
+say "Detected: $OS"
+echo
+
+# ── Install system packages ──────────────────────────────────
+case "$OS" in
+  termux)
+    say "Updating package lists..."
+    pkg update -y
+    say "Installing packages..."
+    pkg install -y openjdk-17 aapt2 aapt zip wget golang 2>/dev/null || pkg install -y openjdk-17 aapt2 aapt zip wget golang
+    JAVA_HOME=""
+    ANDROID_PLATFORMS="/data/data/com.termux/files/usr/opt/android-sdk/platforms"
+    ;;
+  debian)
+    say "Installing packages..."
+    sudo apt update -qq
+    sudo apt install -y openjdk-17-jdk-headless zip wget unzip
+    # aapt2/zipalign: try apt, then download
+    if ! command -v aapt2 >/dev/null 2>&1; then
+      say "Installing Android build-tools..."
+      sudo apt install -y android-sdk-build-tools 2>/dev/null || true
+    fi
+    ANDROID_PLATFORMS="$HOME/Android/Sdk/platforms"
+    ;;
+  arch)
+    say "Installing packages..."
+    sudo pacman -S --noconfirm jdk17-openjdk zip wget unzip
+    if ! command -v aapt2 >/dev/null 2>&1; then
+      sudo pacman -S --noconfirm android-tools 2>/dev/null || true
+    fi
+    ANDROID_PLATFORMS="$HOME/Android/Sdk/platforms"
+    ;;
+  fedora)
+    say "Installing packages..."
+    sudo dnf install -y java-17-openjdk-devel zip wget unzip
+    ANDROID_PLATFORMS="$HOME/Android/Sdk/platforms"
+    ;;
+  *)
+    warn "Unknown OS. Install these manually: openjdk-17, aapt2, zipalign, zip"
+    echo "Then place android.jar at tools/android.jar or set ANDROID_HOME"
+    exit 0
+    ;;
+esac
+
+# ── android.jar ──────────────────────────────────────────────
+TOOLS_JAR="$PWD/tools/android.jar"
+SDK_JAR=""
+
+if [ -f "$TOOLS_JAR" ]; then
+  say "android.jar already present at tools/android.jar"
+elif [ -n "$ANDROID_HOME" ]; then
+  SDK_JAR=$(find "$ANDROID_HOME/platforms" -name "android.jar" 2>/dev/null | head -1)
+fi
+
+if [ -z "$SDK_JAR" ] && [ -d "$ANDROID_PLATFORMS" ]; then
+  SDK_JAR=$(find "$ANDROID_PLATFORMS" -name "android.jar" 2>/dev/null | head -1)
+fi
+
+if [ -n "$SDK_JAR" ]; then
+  say "Found android.jar at $SDK_JAR"
+elif [ ! -f "$TOOLS_JAR" ]; then
+  say "Downloading android-34 platform (android.jar)..."
+  PLATFORM_ZIP=$(mktemp)
+  DL_OK=false
+  if command -v wget >/dev/null 2>&1; then
+    wget -q --show-progress -O "$PLATFORM_ZIP" \
+      "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+  elif command -v curl >/dev/null 2>&1; then
+    curl -L -o "$PLATFORM_ZIP" \
+      "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+  fi
+  if ! $DL_OK; then
+    warn "Failed to download android.jar — check network / DNS"
+    rm -f "$PLATFORM_ZIP"
+    exit 1
+  fi
+  mkdir -p "$PWD/tools"
+  unzip -qo "$PLATFORM_ZIP" "android.jar" -d "$PWD/tools/"
+  rm -f "$PLATFORM_ZIP"
+  say "Extracted android.jar to tools/android.jar"
+fi
+
+# ── Verify ───────────────────────────────────────────────────
+echo
+say "Verifying..."
+ALL_OK=true
+
+for cmd in javac java zip wget go; do
+  if command -v $cmd >/dev/null 2>&1; then
+    echo "  ✓ $cmd  ($(command -v $cmd))"
+  else
+    echo "  ✗ $cmd  NOT FOUND"
+    ALL_OK=false
+  fi
+done
+
+# aapt2/zipalign: might be named differently or not in PATH
+for cmd in aapt2 zipalign; do
+  if command -v $cmd >/dev/null 2>&1; then
+    echo "  ✓ $cmd  ($(command -v $cmd))"
+  else
+    # try common Termux paths
+    found=$(find /data/data/com.termux/files/usr/bin -name "$cmd" 2>/dev/null | head -1)
+    if [ -n "$found" ]; then
+      echo "  ✓ $cmd  ($found)"
+    else
+      echo "  ✗ $cmd  NOT FOUND"
+      ALL_OK=false
+    fi
+  fi
+done
+
+AJAR="$PWD/tools/android.jar"
+[ ! -f "$AJAR" ] && AJAR="$SDK_JAR"
+if [ -n "$AJAR" ] && [ -f "$AJAR" ]; then
+  echo "  ✓ android.jar  ($AJAR)"
+else
+  echo "  ✗ android.jar  NOT FOUND"
+  ALL_OK=false
+fi
+
+echo
+if $ALL_OK; then
+  echo -e "  ${GREEN}All dependencies ready. Run: go run main.go${NC}"
+else
+  warn "Some dependencies are missing. Review output above."
+fi

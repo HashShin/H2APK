@@ -25,11 +25,7 @@ jobs:
           # Delete old assets
           ASSETS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "${{ github.api_url }}/repos/${{ github.repository }}/releases/$RELEASE_ID/assets")
-          echo "$ASSETS" | python3 -c "
-import json, sys
-for a in json.load(sys.stdin):
-    print(a['id'])
-" | while read id; do
+          echo "$ASSETS" | python3 -c "import json, sys; [print(a['id']) for a in json.load(sys.stdin)]" | while read id; do
             echo "Deleting old asset $id"
             curl -s -X DELETE -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               "${{ github.api_url }}/repos/${{ github.repository }}/releases/assets/$id"

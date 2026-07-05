@@ -34,11 +34,11 @@ go build -o h2a main.go
 
 Open `http://localhost:8080`.
 
-On first launch the server runs a dependency check — any missing tools are reported before you start a build.
+On first launch the server runs a dependency check - any missing tools are reported before you start a build.
 
 ## How it works
 
-1. You fill in the form — app name, HTML or URL, icon, optional settings.
+1. You fill in the form - app name, HTML or URL, icon, optional settings.
 2. The Go server writes an `AndroidManifest.xml`, generates Java sources for a WebView activity, compiles them with `javac`, converts the bytecode to DEX with `d8`, packages everything with `aapt2`, zipaligns, and signs it with an embedded debug keystore.
 3. You download the APK.  The build log streams live over SSE.
 
@@ -53,9 +53,9 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 ## Features
 
 **Three input modes**
-- **HTML** — write HTML, CSS, and JS directly in the editor.  In-page preview included.
-- **Website URL** — wrap any website as a standalone app.
-- **Upload** — drop `.html`, `.css`, `.js` files from your project.
+- **HTML** - write HTML, CSS, and JS directly in the editor.  In-page preview included.
+- **Website URL** - wrap any website as a standalone app.
+- **Upload** - drop `.html`, `.css`, `.js` files from your project.
 
 **App customization**
 - App name, package ID, version
@@ -87,12 +87,12 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 
 ```
 H2APK/
-  main.go              — Entire backend: HTTP server, build pipeline, Java codegen
-  static/index.html     — Web UI (embedded at build time)
-  keystore/              — Debug signing key (embedded at build time)
-  tools/                — Downloaded by setup.sh (gitignored)
-  scripts/testbuild.sh  — Test script (builds URL + HTML APK via curl)
-  output/               — Generated APKs
+  main.go              - Entire backend: HTTP server, build pipeline, Java codegen
+  static/index.html     - Web UI (embedded at build time)
+  keystore/              - Debug signing key (embedded at build time)
+  tools/                - Downloaded by setup.sh (gitignored)
+  scripts/testbuild.sh  - Test script (builds URL + HTML APK via curl)
+  output/               - Generated APKs
 ```
 
 Everything is a single Go binary.  The HTML UI and keystore are embedded with `//go:embed`.
@@ -121,7 +121,7 @@ PORT=3000 ./h2a
 ./scripts/testbuild.sh myapp
 ```
 
-Builds two APKs — one from a URL, one from inline HTML — and confirms both succeed.
+Builds two APKs - one from a URL, one from inline HTML - and confirms both succeed.
 
 ## License
 

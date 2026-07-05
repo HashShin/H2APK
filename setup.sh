@@ -38,7 +38,7 @@ case "$OS" in
     ;;
   debian)
     say "Installing packages..."
-    sudo apt install -y openjdk-17-jdk-headless zip wget unzip
+    sudo apt update -qq && sudo apt install -y openjdk-17-jdk-headless zip wget unzip
     # aapt2/zipalign: try apt, then download
     if ! command -v aapt2 >/dev/null 2>&1; then
       say "Installing Android build-tools..."

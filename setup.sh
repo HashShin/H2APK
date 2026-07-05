@@ -89,15 +89,22 @@ elif [ ! -f "$TOOLS_JAR" ]; then
   say "Downloading android-34 platform (android.jar)..."
   PLATFORM_ZIP=$(mktemp)
   DL_OK=false
-  if command -v wget >/dev/null 2>&1; then
-    wget -q --show-progress -O "$PLATFORM_ZIP" \
-      "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
-  elif command -v curl >/dev/null 2>&1; then
-    curl -L -o "$PLATFORM_ZIP" \
-      "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
-  fi
+  for i in 1 2 3; do
+    if command -v wget >/dev/null 2>&1; then
+      wget -q --show-progress -O "$PLATFORM_ZIP" \
+        "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+    elif command -v curl >/dev/null 2>&1; then
+      curl -L -o "$PLATFORM_ZIP" \
+        "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+    fi
+    $DL_OK && break
+    say "Retry $i/3..."
+    sleep 3
+  done
   if ! $DL_OK; then
-    warn "Failed to download android.jar — check network / DNS"
+    warn "Failed to download android.jar — network / DNS unreachable"
+    say "Manual fix: download platform-34_r03.zip yourself and run:"
+    say "  unzip -o platform-34_r03.zip android.jar -d $(pwd)/tools/"
     rm -f "$PLATFORM_ZIP"
     exit 1
   fi

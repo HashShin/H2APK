@@ -38,7 +38,7 @@ jobs:
           sudo apt install -y android-sdk-build-tools
 
       - name: Run setup.sh
-        run: bash scripts/setup.sh
+        run: bash setup.sh
 
       - name: Verify Go build
         run: go build -o /dev/null .
@@ -74,7 +74,7 @@ jobs:
           sudo apt install -y openjdk-17-jdk-headless zip wget android-sdk-build-tools
 
       - name: Run setup.sh
-        run: bash scripts/setup.sh
+        run: bash setup.sh
 
       - name: Verify Go build
         run: go build -o /dev/null .

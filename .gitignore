@@ -13,6 +13,9 @@ tmp/
 *.swp
 *.swo
 
+# Claude
+.openclaude/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -86,16 +86,15 @@ fi
 if [ -n "$SDK_JAR" ]; then
   say "Found android.jar at $SDK_JAR"
 elif [ ! -f "$TOOLS_JAR" ]; then
-  say "Downloading android-34 platform (android.jar)..."
-  PLATFORM_ZIP=$(mktemp)
+  say "Downloading android.jar (platform 34)..."
+  DL_URL="https://github.com/HashShin/H2APK/releases/download/android-34/android.jar"
+  mkdir -p "$PWD/tools"
   DL_OK=false
   for i in 1 2 3; do
     if command -v wget >/dev/null 2>&1; then
-      wget -q --show-progress -O "$PLATFORM_ZIP" \
-        "https://dl.google.com/android/repository/platform-34-ext7_r03.zip" && DL_OK=true
+      wget -q --show-progress -O "$TOOLS_JAR" "$DL_URL" && DL_OK=true
     elif command -v curl >/dev/null 2>&1; then
-      curl -L -o "$PLATFORM_ZIP" \
-        "https://dl.google.com/android/repository/platform-34-ext7_r03.zip" && DL_OK=true
+      curl -L -o "$TOOLS_JAR" "$DL_URL" && DL_OK=true
     fi
     $DL_OK && break
     say "Retry $i/3..."
@@ -103,24 +102,11 @@ elif [ ! -f "$TOOLS_JAR" ]; then
   done
   if ! $DL_OK; then
     warn "Failed to download android.jar — network / DNS unreachable"
-    say "Manual fix: download platform-34-ext7_r03.zip, extract it, and copy android.jar to tools/"
-    rm -f "$PLATFORM_ZIP"
+    say "Manual fix: place android.jar in $(pwd)/tools/android.jar"
+    rm -f "$TOOLS_JAR"
     exit 1
   fi
-  mkdir -p "$PWD/tools"
-  UNZIP_DIR=$(mktemp -d)
-  unzip -qo "$PLATFORM_ZIP" -d "$UNZIP_DIR"
-  JAR_PATH=$(find "$UNZIP_DIR" -name "android.jar" 2>/dev/null | head -1)
-  if [ -z "$JAR_PATH" ]; then
-    warn "android.jar not found in extracted zip"
-    rm -f "$PLATFORM_ZIP"
-    rm -rf "$UNZIP_DIR"
-    exit 1
-  fi
-  mv "$JAR_PATH" "$PWD/tools/android.jar"
-  rm -f "$PLATFORM_ZIP"
-  rm -rf "$UNZIP_DIR"
-  say "Extracted android.jar to tools/android.jar"
+  say "Downloaded android.jar to tools/android.jar"
 fi
 
 # ── Verify ───────────────────────────────────────────────────

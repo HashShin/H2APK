@@ -92,10 +92,10 @@ elif [ ! -f "$TOOLS_JAR" ]; then
   for i in 1 2 3; do
     if command -v wget >/dev/null 2>&1; then
       wget -q --show-progress -O "$PLATFORM_ZIP" \
-        "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+        "https://dl.google.com/android/repository/platform-34-ext12_r01.zip" && DL_OK=true
     elif command -v curl >/dev/null 2>&1; then
       curl -L -o "$PLATFORM_ZIP" \
-        "https://dl.google.com/android/repository/platform-34_r03.zip" && DL_OK=true
+        "https://dl.google.com/android/repository/platform-34-ext12_r01.zip" && DL_OK=true
     fi
     $DL_OK && break
     say "Retry $i/3..."
@@ -103,8 +103,8 @@ elif [ ! -f "$TOOLS_JAR" ]; then
   done
   if ! $DL_OK; then
     warn "Failed to download android.jar — network / DNS unreachable"
-    say "Manual fix: download platform-34_r03.zip yourself and run:"
-    say "  unzip -o platform-34_r03.zip android.jar -d $(pwd)/tools/"
+    say "Manual fix: download platform-34-ext12_r01.zip and run:"
+    say "  unzip -o platform-34-ext12_r01.zip android.jar -d $(pwd)/tools/"
     rm -f "$PLATFORM_ZIP"
     exit 1
   fi

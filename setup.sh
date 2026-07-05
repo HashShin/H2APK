@@ -87,18 +87,39 @@ if [ -n "$SDK_JAR" ]; then
   say "Found android.jar at $SDK_JAR"
 elif [ ! -f "$TOOLS_JAR" ]; then
   say "Downloading android.jar (platform 34)..."
-  DL_URL="https://github.com/HashShin/H2APK/releases/download/android-34/android.jar"
+  DL_URLS="
+    https://github.com/HashShin/H2APK/releases/download/android-34/android.jar
+    https://dl.google.com/android/repository/platform-34-ext7_r03.zip
+  "
   mkdir -p "$PWD/tools"
   DL_OK=false
-  for i in 1 2 3; do
-    if command -v wget >/dev/null 2>&1; then
-      wget -q --show-progress -O "$TOOLS_JAR" "$DL_URL" && DL_OK=true
-    elif command -v curl >/dev/null 2>&1; then
-      curl -L -o "$TOOLS_JAR" "$DL_URL" && DL_OK=true
+  for DL_URL in $DL_URLS; do
+    say "Trying: $DL_URL"
+    for i in 1 2 3; do
+      if command -v wget >/dev/null 2>&1; then
+        wget -q --show-progress -O "$TOOLS_JAR" "$DL_URL" && DL_OK=true
+      elif command -v curl >/dev/null 2>&1; then
+        curl -L -o "$TOOLS_JAR" "$DL_URL" && DL_OK=true
+      fi
+      $DL_OK && break
+      say "Retry $i/3..."
+      sleep 3
+    done
+    # If downloaded a zip from Google, extract android.jar
+    if $DL_OK && echo "$DL_URL" | grep -q '\.zip$'; then
+      UNZIP_DIR=$(mktemp -d)
+      unzip -qo "$TOOLS_JAR" -d "$UNZIP_DIR"
+      JAR_PATH=$(find "$UNZIP_DIR" -name "android.jar" 2>/dev/null | head -1)
+      if [ -n "$JAR_PATH" ]; then
+        mv "$JAR_PATH" "$TOOLS_JAR"
+        rm -rf "$UNZIP_DIR"
+      else
+        warn "android.jar not found in extracted zip"
+        rm -f "$TOOLS_JAR"; rm -rf "$UNZIP_DIR"
+        DL_OK=false
+      fi
     fi
     $DL_OK && break
-    say "Retry $i/3..."
-    sleep 3
   done
   if ! $DL_OK; then
     warn "Failed to download android.jar — network / DNS unreachable"

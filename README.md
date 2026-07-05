@@ -19,8 +19,8 @@ H2APK is a single-binary Go server that converts HTML content or website URLs in
 git clone https://github.com/HashShin/H2APK
 cd H2APK
 ./setup.sh
-go build -o h2a main.go
-./h2a
+go build -o h2apk main.go
+./h2apk
 ```
 
 Open `http://localhost:8080`.
@@ -103,7 +103,7 @@ Everything is a single Go binary.  The HTML UI and keystore are embedded with `/
 Set `PORT` to change from the default `8080`:
 
 ```bash
-PORT=3000 ./h2a
+PORT=3000 ./h2apk
 ```
 
 ## Test build

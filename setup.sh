@@ -32,7 +32,7 @@ echo
 case "$OS" in
   termux)
     say "Updating package lists..."
-    pkg update -y
+    pkg update -y 2>&1 | tail -1 || true
     say "Installing packages..."
     pkg install -y openjdk-17 aapt2 aapt zip wget golang 2>/dev/null || pkg install -y openjdk-17 aapt2 aapt zip wget golang
     JAVA_HOME=""

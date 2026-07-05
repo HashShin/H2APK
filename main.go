@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -129,8 +130,12 @@ func main() {
 		port = "8080"
 	}
 	fmt.Printf("  H2APK — HTML/URL to APK\n")
-	fmt.Printf("  http://localhost:%s\n\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	fmt.Printf("  http://localhost:%s\n", port)
+	if ip := localIP(); ip != "" {
+		fmt.Printf("  http://%s:%s\n", ip, port)
+	}
+	fmt.Println()
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
 }
 
 func checkDeps() {
@@ -1764,4 +1769,17 @@ func env(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func localIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			return ipnet.IP.String()
+		}
+	}
+	return ""
 }

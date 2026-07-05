@@ -63,9 +63,9 @@ case "$OS" in
     ANDROID_PLATFORMS="$HOME/Android/Sdk/platforms"
     ;;
   *)
-    warn "Unknown OS. Install these manually: openjdk-17, aapt2, zipalign, zip"
-    echo "Then place android.jar at tools/android.jar or set ANDROID_HOME"
-    exit 0
+    warn "Unknown OS. Install these manually: openjdk-17, aapt2, zipalign, zip, go, wget"
+    echo "JARs will be downloaded below."
+    ANDROID_PLATFORMS="$HOME/Android/Sdk/platforms"
     ;;
 esac
 

@@ -13,6 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Cache android.jar
+        uses: actions/cache@v4
+        with:
+          path: tools/android.jar
+          key: android-34-platform-v1
+
       - name: Install Android SDK tools
         run: |
           sudo apt update -qq

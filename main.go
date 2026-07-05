@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed keystore/debug.keystore
@@ -110,6 +111,7 @@ func main() {
 	checkDeps()
 
 	os.MkdirAll(filepath.Join(baseDir, "output"), 0755)
+	cleanOldBuilds()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
@@ -136,6 +138,26 @@ func main() {
 	}
 	fmt.Println()
 	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
+}
+
+func cleanOldBuilds() {
+	cutoff := time.Now().Add(-24 * time.Hour)
+	outputDir := filepath.Join(baseDir, "output")
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			path := filepath.Join(outputDir, e.Name())
+			os.RemoveAll(path)
+			fmt.Printf("  cleaned: %s\n", e.Name())
+		}
+	}
 }
 
 func checkDeps() {
@@ -358,9 +380,7 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 		}
 		rec.log = logs.String()
 		close(rec.logCh)
-		if rec.status == "done" {
-			os.RemoveAll(work)
-		}
+		os.RemoveAll(work)
 	}()
 
 	os.MkdirAll(work, 0755)

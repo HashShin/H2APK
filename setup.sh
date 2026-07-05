@@ -69,6 +69,39 @@ case "$OS" in
     ;;
 esac
 
+# ── H2APK tools (android.jar, d8.jar, apksigner.jar) ────────
+TOOLS_REPO="https://github.com/HashShin/H2APK-TOOLS/releases/download/tools"
+
+download_tool() {
+  local name="$1" url="$2"
+  local dest="$PWD/tools/$name"
+  if [ -f "$dest" ]; then
+    say "$name already present at tools/$name"
+    return 0
+  fi
+  say "Downloading $name..."
+  mkdir -p "$PWD/tools"
+  DL_OK=false
+  for i in 1 2 3; do
+    if command -v wget >/dev/null 2>&1; then
+      wget -q --show-progress -O "$dest" "$url" && DL_OK=true
+    elif command -v curl >/dev/null 2>&1; then
+      curl -L -o "$dest" "$url" && DL_OK=true
+    fi
+    $DL_OK && break
+    say "Retry $i/3..."
+    sleep 3
+  done
+  if ! $DL_OK; then
+    warn "Failed to download $name"
+    return 1
+  fi
+  say "Downloaded $name to tools/$name"
+}
+
+download_tool "d8.jar"        "$TOOLS_REPO/d8.jar"        || exit 1
+download_tool "apksigner.jar" "$TOOLS_REPO/apksigner.jar" || exit 1
+
 # ── android.jar ──────────────────────────────────────────────
 TOOLS_JAR="$PWD/tools/android.jar"
 SDK_JAR=""
@@ -88,6 +121,7 @@ if [ -n "$SDK_JAR" ]; then
 elif [ ! -f "$TOOLS_JAR" ]; then
   say "Downloading android.jar (platform 34)..."
   DL_URLS="
+    $TOOLS_REPO/android.jar
     https://github.com/HashShin/H2APK/releases/download/android-34/android.jar
     https://dl.google.com/android/repository/platform-34-ext7_r03.zip
   "
@@ -168,6 +202,15 @@ else
   echo "  ✗ android.jar  NOT FOUND"
   ALL_OK=false
 fi
+
+for jar in d8.jar apksigner.jar; do
+  if [ -f "$PWD/tools/$jar" ]; then
+    echo "  ✓ $jar  (tools/$jar)"
+  else
+    echo "  ✗ $jar  NOT FOUND"
+    ALL_OK=false
+  fi
+done
 
 echo
 if $ALL_OK; then

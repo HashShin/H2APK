@@ -25,9 +25,7 @@ go build -o h2a main.go
 
 Open `http://localhost:8080`.
 
-`setup.sh` installs Go, JDK, Android SDK build-tools, and downloads `android.jar`.  On first launch the server runs a dependency check — any missing tools are reported before you start a build.
-
-`d8.jar` and `apksigner.jar` are bundled in `tools/`.
+`setup.sh` installs Go, JDK, Android SDK build-tools, and downloads `android.jar`, `d8.jar`, and `apksigner.jar` into `tools/`.  On first launch the server runs a dependency check — any missing tools are reported before you start a build.
 
 ## How it works
 
@@ -83,7 +81,7 @@ H2APK/
   main.go              — Entire backend: HTTP server, build pipeline, Java codegen
   static/index.html     — Web UI (embedded at build time)
   keystore/              — Debug signing key (embedded at build time)
-  tools/                — d8.jar, apksigner.jar (bundled)
+  tools/                — Downloaded by setup.sh (gitignored)
   scripts/testbuild.sh  — Test script (builds URL + HTML APK via curl)
   output/               — Generated APKs
 ```

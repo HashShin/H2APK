@@ -63,7 +63,7 @@ jobs:
       - name: Setup Android SDK
         run: |
           sudo apt update -qq
-          sudo apt install -y openjdk-17-jdk-headless zip wget
+          sudo apt install -y openjdk-17-jdk-headless zip wget android-sdk-build-tools
 
       - name: Run setup.sh
         run: bash setup.sh

@@ -31,8 +31,6 @@ echo
 # ── Install system packages ──────────────────────────────────
 case "$OS" in
   termux)
-    say "Updating package lists..."
-    pkg update -y 2>&1 | tail -1 || true
     say "Installing packages..."
     pkg install -y openjdk-17 aapt2 aapt zip wget golang 2>/dev/null || pkg install -y openjdk-17 aapt2 aapt zip wget golang
     JAVA_HOME=""
@@ -40,7 +38,6 @@ case "$OS" in
     ;;
   debian)
     say "Installing packages..."
-    sudo apt update -qq
     sudo apt install -y openjdk-17-jdk-headless zip wget unzip
     # aapt2/zipalign: try apt, then download
     if ! command -v aapt2 >/dev/null 2>&1; then

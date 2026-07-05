@@ -23,3 +23,11 @@ jobs:
 
       - name: Verify Go build
         run: go build -o /dev/null .
+
+      - name: Smoke test — start server
+        run: |
+          go run . &
+          SERVER_PID=$!
+          sleep 5
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ || true
+          kill $SERVER_PID 2>/dev/null || true

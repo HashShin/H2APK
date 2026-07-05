@@ -1187,7 +1187,7 @@ func findLocalOrSystem(localPath, configKey, systemPath string) string {
 // getKeystore writes the embedded debug keystore to disk on first call.
 func getKeystore() string {
 	ksOnce.Do(func() {
-		ksPath = filepath.Join(baseDir, "template", "debug.keystore")
+		ksPath = filepath.Join(baseDir, "tmp", "debug.keystore")
 		os.MkdirAll(filepath.Dir(ksPath), 0755)
 		os.WriteFile(ksPath, embeddedKS, 0644)
 	})

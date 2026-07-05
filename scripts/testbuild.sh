@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # H2A test build — builds a test APK in both URL and HTML modes
-# Usage: ./testbuild/build.sh [name]
+# Usage: ./scripts/testbuild.sh [name]
 
 NAME="${1:-test}"
 HOST="${H2A_HOST:-localhost:8080}"

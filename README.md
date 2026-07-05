@@ -18,14 +18,14 @@ H2APK is a single-binary Go server that converts HTML content or website URLs in
 ```bash
 git clone https://github.com/gitlawb/h2apk
 cd h2apk
-./setup.sh              # install dependencies (Termux, Debian, Arch, Fedora)
+./scripts/setup.sh      # install dependencies (Termux, Debian, Arch, Fedora)
 go build -o h2a main.go
 ./h2a
 ```
 
 Open `http://localhost:8080`.
 
-`setup.sh` installs Go, JDK, Android SDK build-tools, and downloads `android.jar`.  On first launch the server runs a dependency check — any missing tools are reported before you start a build.
+`scripts/setup.sh` installs Go, JDK, Android SDK build-tools, and downloads `android.jar`.  On first launch the server runs a dependency check — any missing tools are reported before you start a build.
 
 `d8.jar` and `apksigner.jar` are bundled in `tools/`.
 
@@ -82,9 +82,9 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 H2APK/
   main.go              — Entire backend: HTTP server, build pipeline, Java codegen
   static/index.html     — Web UI (embedded at build time)
-  template/             — Embedded debug keystore
+  debug.keystore         — Embedded debug signing key
   tools/                — d8.jar, apksigner.jar (bundled)
-  testbuild/build.sh    — Test script (builds URL + HTML APK via curl)
+  scripts/testbuild.sh  — Test script (builds URL + HTML APK via curl)
   output/               — Generated APKs
 ```
 
@@ -111,7 +111,7 @@ PORT=3000 ./h2a
 ## Test build
 
 ```bash
-./testbuild/build.sh myapp
+./scripts/testbuild.sh myapp
 ```
 
 Builds two APKs — one from a URL, one from inline HTML — and confirms both succeed.

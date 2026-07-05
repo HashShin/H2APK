@@ -103,14 +103,23 @@ elif [ ! -f "$TOOLS_JAR" ]; then
   done
   if ! $DL_OK; then
     warn "Failed to download android.jar — network / DNS unreachable"
-    say "Manual fix: download platform-34-ext7_r03.zip and run:"
-    say "  unzip -o platform-34-ext7_r03.zip android.jar -d $(pwd)/tools/"
+    say "Manual fix: download platform-34-ext7_r03.zip, extract it, and copy android.jar to tools/"
     rm -f "$PLATFORM_ZIP"
     exit 1
   fi
   mkdir -p "$PWD/tools"
-  unzip -qo "$PLATFORM_ZIP" "android.jar" -d "$PWD/tools/"
+  UNZIP_DIR=$(mktemp -d)
+  unzip -qo "$PLATFORM_ZIP" -d "$UNZIP_DIR"
+  JAR_PATH=$(find "$UNZIP_DIR" -name "android.jar" 2>/dev/null | head -1)
+  if [ -z "$JAR_PATH" ]; then
+    warn "android.jar not found in extracted zip"
+    rm -f "$PLATFORM_ZIP"
+    rm -rf "$UNZIP_DIR"
+    exit 1
+  fi
+  mv "$JAR_PATH" "$PWD/tools/android.jar"
   rm -f "$PLATFORM_ZIP"
+  rm -rf "$UNZIP_DIR"
   say "Extracted android.jar to tools/android.jar"
 fi
 

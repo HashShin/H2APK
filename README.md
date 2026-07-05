@@ -16,8 +16,8 @@ H2APK is a single-binary Go server that converts HTML content or website URLs in
 ## Install
 
 ```bash
-git clone https://github.com/gitlawb/h2apk
-cd h2apk
+git clone https://github.com/HashShin/H2APK
+cd H2APK
 ./setup.sh
 go build -o h2a main.go
 ./h2a

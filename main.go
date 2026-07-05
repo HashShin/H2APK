@@ -18,7 +18,7 @@ import (
 	"sync"
 )
 
-//go:embed debug.keystore
+//go:embed keystore/debug.keystore
 var embeddedKS []byte
 
 //go:embed static/index.html

@@ -82,7 +82,7 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 H2APK/
   main.go              — Entire backend: HTTP server, build pipeline, Java codegen
   static/index.html     — Web UI (embedded at build time)
-  debug.keystore         — Embedded debug signing key
+  keystore/              — Debug signing key (embedded at build time)
   tools/                — d8.jar, apksigner.jar (bundled)
   scripts/testbuild.sh  — Test script (builds URL + HTML APK via curl)
   output/               — Generated APKs

@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,7 +31,7 @@ echo
 case "$OS" in
   termux)
     say "Installing packages..."
-    pkg install -y openjdk-17 aapt2 aapt zip wget golang 2>/dev/null || pkg install -y openjdk-17 aapt2 aapt zip wget golang
+    pkg install -y openjdk-17 aapt2 aapt zip wget golang 2>/dev/null || pkg install -y openjdk-17 aapt2 aapt zip wget golang || true
     JAVA_HOME=""
     ANDROID_PLATFORMS="/data/data/com.termux/files/usr/opt/android-sdk/platforms"
     ;;

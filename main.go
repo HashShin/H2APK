@@ -112,6 +112,11 @@ func main() {
 
 	os.MkdirAll(filepath.Join(baseDir, "output"), 0755)
 	cleanOldBuilds()
+	go func() {
+		for range time.Tick(1 * time.Hour) {
+			cleanOldBuilds()
+		}
+	}()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {

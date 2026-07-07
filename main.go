@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
@@ -150,13 +151,28 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	fmt.Printf("  H2APK — HTML/URL to APK\n")
-	fmt.Printf("  http://localhost:%s\n", port)
-	if ip := localIP(); ip != "" {
-		fmt.Printf("  http://%s:%s\n", ip, port)
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Printf("  H2APK — HTML/URL to APK\n")
+		fmt.Printf("  http://localhost:%s\n", port)
+		if ip := localIP(); ip != "" {
+			fmt.Printf("  http://%s:%s\n", ip, port)
+		}
+		fmt.Println()
+
+		err := http.ListenAndServe("0.0.0.0:"+port, nil)
+		if err != nil && strings.Contains(err.Error(), "address already in use") {
+			fmt.Printf("Port %s is in use. Enter another port: ", port)
+			scanner.Scan()
+			port = strings.TrimSpace(scanner.Text())
+			if port == "" {
+				port = "8080"
+			}
+			continue
+		}
+		log.Fatal(err)
 	}
-	fmt.Println()
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, nil))
 }
 
 func cleanOldBuilds() {

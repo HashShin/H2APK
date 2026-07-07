@@ -301,6 +301,10 @@ func handleBuild(w http.ResponseWriter, r *http.Request) {
 		req.PackageName = "com.h2a.app"
 	}
 	req.PackageName = cleanPkg(req.PackageName)
+	if !strings.Contains(req.PackageName, ".") {
+		http.Error(w, "invalid package name: must contain at least one dot (e.g. com.example.app)", 400)
+		return
+	}
 
 	id := newID()
 	buildsMu.Lock()

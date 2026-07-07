@@ -825,9 +825,17 @@ async function build(){
   st.innerHTML='<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".2"/><path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/></svg> Building APK...';
   log.style.display='none';dl.className='dl-box';dl.innerHTML='';
 
+  const pkg=document.getElementById('pkg').value||'com.h2a.app';
+  if(!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(pkg)){
+    st.className='failed';
+    st.innerHTML='<span class="pulse-dot"></span>Invalid package name — must have at least one dot (e.g. com.example.app)';
+    btn.disabled=false;
+    return;
+  }
+
   const body={
     app_name: document.getElementById('appName').value||'MyApp',
-    package_name: document.getElementById('pkg').value||'com.h2a.app',
+    package_name: pkg,
     icon: iconBase64,
     pull_refresh: document.getElementById('pullRefresh').checked,
     theme_color: document.getElementById('themeColor').value,

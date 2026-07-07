@@ -34,7 +34,6 @@ var instapayPNG []byte
 var binancePNG []byte
 
 type Config struct {
-	Port         string `json:"port"`
 	D8Jar        string `json:"d8_jar"`
 	ApkSignerJar string `json:"apksigner_jar"`
 	AndroidJar   string `json:"android_jar"`
@@ -147,17 +146,16 @@ func main() {
 		w.Write(binancePNG)
 	})
 
-	cfg := loadConfig()
-	port := env("PORT", cfg.Port)
+	port := env("PORT", "")
+	envPort := readEnvPort()
+	if envPort != "" {
+		port = envPort
+	}
 	if port == "" {
 		port = "8080"
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
-	envPort := readEnvPort()
-	if envPort != "" {
-		port = envPort
-	}
 	for {
 		listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 		if err != nil && strings.Contains(err.Error(), "address already in use") {

@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/HashShin/H2APK/refs/heads/main/assets/images/banner.png" alt="H2APK Banner"></p>
+
 <p align="center"><strong>HTML → APK. One click.</strong></p>
 
 <p align="center">Paste HTML or a URL.  Get back an Android app.<br>No Android Studio.  No Gradle.  No XML.</p>

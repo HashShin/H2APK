@@ -5,6 +5,7 @@
 <p align="center">Paste HTML or a URL.  Get back an Android app.<br>No Android Studio.  No Gradle.  No XML.</p>
 
 <p align="center">
+  <a href="https://h2apk.hashcode.win/">Try it live</a> ·
   <a href="#install">Install</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#features">Features</a> ·

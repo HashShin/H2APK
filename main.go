@@ -154,15 +154,12 @@ func main() {
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
+	envPort := readEnvPort()
+	if envPort != "" {
+		port = envPort
+	}
 	for {
-		fmt.Printf("  H2APK — HTML/URL to APK\n")
-		fmt.Printf("  http://localhost:%s\n", port)
-		if ip := localIP(); ip != "" {
-			fmt.Printf("  http://%s:%s\n", ip, port)
-		}
-		fmt.Println()
-
-		err := http.ListenAndServe("0.0.0.0:"+port, nil)
+		listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 		if err != nil && strings.Contains(err.Error(), "address already in use") {
 			fmt.Printf("Port %s is in use. Enter another port: ", port)
 			scanner.Scan()
@@ -170,9 +167,20 @@ func main() {
 			if port == "" {
 				port = "8080"
 			}
+			saveEnvPort(port)
 			continue
 		}
-		log.Fatal(err)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("  H2APK — HTML/URL to APK\n")
+		fmt.Printf("  http://localhost:%s\n", port)
+		if ip := localIP(); ip != "" {
+			fmt.Printf("  http://%s:%s\n", ip, port)
+		}
+		fmt.Println()
+		saveEnvPort(port)
+		log.Fatal(http.Serve(listener, nil))
 	}
 }
 
@@ -1850,4 +1858,40 @@ func localIP() string {
 		}
 	}
 	return ""
+}
+
+func readEnvPort() string {
+	data, err := os.ReadFile(filepath.Join(baseDir, ".env"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "PORT=") {
+			return strings.TrimPrefix(line, "PORT=")
+		}
+	}
+	return ""
+}
+
+func saveEnvPort(port string) {
+	envPath := filepath.Join(baseDir, ".env")
+	data, err := os.ReadFile(envPath)
+	lines := []string{}
+	found := false
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "PORT=") {
+				lines = append(lines, "PORT="+port)
+				found = true
+			} else if trimmed != "" {
+				lines = append(lines, line)
+			}
+		}
+	}
+	if !found {
+		lines = append(lines, "PORT="+port)
+	}
+	os.WriteFile(envPath, []byte(strings.Join(lines, "\n")+"\n"), 0644)
 }

@@ -614,13 +614,13 @@ document.addEventListener('keydown',function(e){
 
 <div class="section hidden" id="uploadSection">
   <div class="section-title">Upload Project Files</div>
-  <p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-bottom:16px">Requires <b style="color:#fff">index.html</b>. CSS and JS files are optional.</p>
+  <p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-bottom:16px">Requires <b style="color:#fff">index.html</b>. CSS, JS, and image files are optional.</p>
   <label class="upload-zone" for="projectFiles">
     <span class="upload-icon">+</span>
     <span>Select files or drop here</span>
-    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js</span>
+    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .png .jpg .svg .gif .webp</span>
   </label>
-  <input type="file" id="projectFiles" accept=".html,.css,.js" multiple onchange="handleFiles(this)" style="display:none">
+  <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico" multiple onchange="handleFiles(this)" style="display:none">
   <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
 </div>
 
@@ -724,6 +724,7 @@ let iconBase64='';
 let keystoreBase64='';
 let currentMode='html';
 let uploadedFiles={};
+let uploadedImages={};
 
 function previewIcon(input){
   const f=input.files[0],p=document.getElementById('iconPreview');
@@ -775,24 +776,34 @@ function previewSplash(input){
 
 function handleFiles(input){
   uploadedFiles={};
+  uploadedImages={};
   const fl=document.getElementById('fileList');
   if(!input.files.length){fl.innerHTML='';return}
   let pending=input.files.length;
   let list=[];
   for(const f of input.files){
     const reader=new FileReader();
+    const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(f.name);
     reader.onload=function(){
-      uploadedFiles[f.name]=reader.result;
+      if(isImage){
+        uploadedImages[f.name]=reader.result.split(',')[1];
+      }else{
+        uploadedFiles[f.name]=reader.result;
+      }
       list.push(f.name);
       pending--;
       if(!pending){
         let html='';
         for(const name of list){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
-        if(!uploadedFiles['index.html']){html+='<span class="missing">missing: index.html</span>';}
+        if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
         fl.innerHTML=html;
       }
     };
-    reader.readAsText(f);
+    if(isImage){
+      reader.readAsDataURL(f);
+    }else{
+      reader.readAsText(f);
+    }
   }
 }
 
@@ -834,6 +845,9 @@ async function build(){
     splash_animation: document.getElementById('splashAnimation').value,
     version: document.getElementById('version').value
   };
+  if(currentMode==='upload' && Object.keys(uploadedImages).length){
+    body.asset_files=uploadedImages;
+  }
   if(document.getElementById('releaseSign').checked && keystoreBase64){
     body.keystore=keystoreBase64;
     body.ks_pass=document.getElementById('ksPass').value;

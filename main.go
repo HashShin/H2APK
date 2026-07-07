@@ -86,6 +86,7 @@ type BuildRequest struct {
 	KeystorePass      string `json:"ks_pass"`
 	KeyAlias          string `json:"key_alias"`
 	KeyPass           string `json:"key_pass"`
+	AssetFiles        map[string]string `json:"asset_files"` // filename -> base64
 }
 
 type BuildInfo struct {
@@ -517,6 +518,14 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	} else {
 		logf("Writing web assets")
 		writeFile(filepath.Join(assets, "index.html"), wrapHTML(req))
+		for name, data := range req.AssetFiles {
+			decoded, err := base64.StdEncoding.DecodeString(data)
+			if err == nil {
+				// sanitize: strip any path components to prevent traversal
+				clean := filepath.Base(name)
+				writeFile(filepath.Join(assets, clean), string(decoded))
+			}
+		}
 	}
 
 	// 4. Java source for WebView activity

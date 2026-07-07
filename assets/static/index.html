@@ -6,7 +6,7 @@
 <title>H2APK — HTML/URL to APK</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700;900&family=Luckiest+Guy&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{-webkit-tap-highlight-color:transparent;outline:none;border:none;box-shadow:none;box-sizing:border-box;margin:0;padding:0}
 body{
@@ -257,7 +257,197 @@ input[type=color]::-webkit-color-swatch{border-radius:6px;border:none}
 }
 #previewBar button:hover{border-color:rgba(255,255,255,0.3);color:#fff}
 #previewFrame{flex:1;width:100%;border:none;background:#fff}
+
+/* ========== DONATION OVERLAY ========== */
+#donationOverlay{
+  position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.8);
+  display:none;align-items:safe center;justify-content:safe center;
+  padding:clamp(20px,4vw,48px) clamp(12px,3vw,24px);
+  animation:donationFadeIn .3s ease
+}
+#donationOverlay.open{display:flex}
+@keyframes donationFadeIn{from{opacity:0}to{opacity:1}}
+
+#donationOverlay .donation-wrap{
+  width:100%;max-width:480px;position:relative;
+  animation:donationRiseIn .5s cubic-bezier(.22,.61,.36,1) both;
+  border-radius:20px;overflow:hidden;
+  border:1px solid rgba(255,255,255,0.06)
+}
+@keyframes donationRiseIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+#donationOverlay .donation-hero{
+  background:linear-gradient(160deg,#e8933a,#a85a1e 70%);
+  padding:36px 24px 28px;text-align:center;
+  color:#fff9ee;overflow:hidden;position:relative
+}
+#donationOverlay .donation-hero::after{
+  content:"";position:absolute;left:50%;bottom:-15px;
+  transform:translateX(-50%);
+  width:140%;height:30px;
+  background:#141210;border-radius:50%
+}
+#donationOverlay .donation-close{
+  position:absolute;top:12px;right:14px;
+  background:rgba(0,0,0,0.2);color:#fff9ee;
+  width:32px;height:32px;border-radius:50%;font-size:1.1rem;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;line-height:1;
+  font-family:'Nunito',sans-serif;z-index:2
+}
+#donationOverlay .donation-close:hover{background:rgba(0,0,0,0.35)}
+
+#donationOverlay .donation-mug{
+  width:96px;height:96px;margin:0 auto 10px;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,0.3))
+}
+@keyframes donationClink{
+  0%,100%{transform:rotate(0deg)}
+  5%{transform:rotate(-8deg)}
+  10%{transform:rotate(6deg)}
+  15%{transform:rotate(0deg)}
+}
+
+#donationOverlay .donation-brand{
+  font-family:'Luckiest Guy',cursive;letter-spacing:1px;
+  font-size:clamp(1.5rem,5vw,1.9rem);
+  text-shadow:0 2px 0 rgba(0,0,0,0.18);line-height:1.1
+}
+#donationOverlay .donation-sub{margin-top:4px;font-weight:700;font-size:.88rem;opacity:.9;font-family:'Nunito',sans-serif}
+
+#donationOverlay .donation-body{
+  background:#141210;border-radius:0 0 20px 20px;
+  padding:clamp(6px,2vw,10px) clamp(20px,5vw,28px) clamp(24px,5vw,28px)
+}
+#donationOverlay .donation-pitch{
+  text-align:center;font-weight:700;color:rgba(255,255,255,0.5);
+  font-size:.85rem;margin:4px 0 20px;line-height:1.6;font-family:'Nunito',sans-serif
+}
+#donationOverlay .donation-tabs{display:flex;gap:6px;margin-bottom:16px;padding:4px;background:rgba(255,255,255,0.03);border-radius:12px}
+#donationOverlay .donation-tab-btn{
+  flex:1;padding:10px 8px;border-radius:9px;background:transparent;
+  font-family:'Nunito',sans-serif;font-weight:800;font-size:.8rem;color:rgba(255,255,255,0.4);
+  cursor:pointer;transition:all .2s ease;min-height:44px
+}
+#donationOverlay .donation-tab-btn.active{background:rgba(107,142,78,0.2);color:#8aad6e}
+#donationOverlay .donation-tab-btn:hover:not(.active){color:rgba(255,255,255,0.6)}
+
+#donationOverlay .donation-panel{display:none;animation:donationPanelIn .25s ease}
+#donationOverlay .donation-panel.active{display:block}
+@keyframes donationPanelIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+#donationOverlay .donation-method-card{
+  background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;padding:16px;display:flex;gap:12px;align-items:center;margin-bottom:10px
+}
+#donationOverlay .donation-qr-box{
+  flex-shrink:0;width:84px;height:84px;border-radius:10px;
+  border:1px solid rgba(255,255,255,0.12);background:#fff;
+  display:flex;align-items:center;justify-content:center;overflow:hidden
+}
+#donationOverlay .donation-qr-box.qr-large{width:120px;height:120px;border-radius:12px}
+#donationOverlay .donation-qr-box img{width:100%;height:100%;object-fit:cover}
+#donationOverlay .donation-qr-card{align-items:flex-start}
+#donationOverlay .donation-method-info{flex:1;min-width:0}
+#donationOverlay .donation-method-name{font-weight:900;font-size:.88rem;color:#f0ede8;margin-bottom:2px;font-family:'Nunito',sans-serif}
+#donationOverlay .donation-method-detail{font-weight:700;font-size:.8rem;color:rgba(255,255,255,0.55);word-break:break-all;margin-bottom:2px;font-family:'Nunito',sans-serif}
+#donationOverlay .donation-copy-target{cursor:pointer;transition:color .15s}
+#donationOverlay .donation-copy-target.highlight{color:#f4c542}
+#donationOverlay .donation-copy-icon.highlight{opacity:1;color:#f4c542}
+@media(hover:hover){
+  #donationOverlay .donation-copy-target:hover{color:#f4c542}
+  #donationOverlay .donation-copy-target:hover~.donation-copy-icon,
+  #donationOverlay .donation-copy-icon:hover{opacity:1;color:#f4c542}
+}
+#donationOverlay .donation-copy-icon{opacity:.4;transition:opacity .15s,color .15s}
+
+#donationOverlay .donation-btn-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+#donationOverlay .donation-open-btn{
+  margin-top:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;
+  color:rgba(255,255,255,0.5);font-weight:700;font-size:.72rem;
+  padding:6px 12px;border-radius:20px;cursor:pointer;
+  font-family:'Nunito',sans-serif;transition:all .2s ease;min-height:36px;
+  text-decoration:none;text-align:center
+}
+#donationOverlay .donation-open-btn:hover{border-color:rgba(255,255,255,0.3);color:rgba(255,255,255,0.8)}
+#donationOverlay .donation-open-btn:active{transform:scale(.96)}
+
+#donationOverlay .donation-deeplink-note{font-size:.65rem;color:rgba(255,255,255,0.25);margin-top:6px;line-height:1.45;font-family:'Nunito',sans-serif}
+
+#donationOverlay .donation-bubbles{
+  position:absolute;top:8px;left:0;right:0;
+  display:flex;justify-content:space-around;pointer-events:none
+}
+#donationOverlay .donation-bubble{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.5);animation:donationFloatUp 4s ease-in infinite}
+@keyframes donationFloatUp{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(-56px);opacity:0}}
+
+@media(max-width:380px){
+  #donationOverlay .donation-tiers{grid-template-columns:repeat(2,1fr);gap:6px}
+  #donationOverlay .donation-tier{padding:14px 6px;border-radius:12px}
+  #donationOverlay .donation-tier .d-emoji{font-size:1.2rem}
+  #donationOverlay .donation-tier .d-label{font-size:.72rem}
+  #donationOverlay .donation-tier .d-price{font-size:.85rem}
+  #donationOverlay .donation-btn-row{flex-wrap:nowrap}
+  #donationOverlay .donation-open-btn{font-size:.64rem;padding:5px 8px;white-space:nowrap}
+  #donationOverlay .donation-method-card{flex-direction:column;align-items:flex-start}
+}
 </style>
+<script>
+// Donation overlay functions
+function donationSwitchTab(btn,tab){
+  var tabs=document.querySelectorAll('#donationOverlay .donation-tab-btn');
+  var panels=document.querySelectorAll('#donationOverlay .donation-panel');
+  for(var i=0;i<tabs.length;i++)tabs[i].classList.remove('active');
+  for(var i=0;i<panels.length;i++)panels[i].classList.remove('active');
+  btn.classList.add('active');
+  document.getElementById('donation-panel-'+tab).classList.add('active');
+}
+function copyBinanceId(){
+  var span=document.querySelector('#donation-panel-binance .donation-copy-target');
+  var icon=document.querySelector('#donation-panel-binance .donation-copy-icon');
+  navigator.clipboard.writeText('60362410').then(function(){
+    span.classList.add('highlight');icon.classList.add('highlight');
+    setTimeout(function(){span.classList.remove('highlight');icon.classList.remove('highlight')},800);
+  });
+}
+async function downloadQR(type){
+  var btn=document.getElementById(type==='instapay'?'dlQrBtn':'dlBinanceQrBtn');
+  var sel=type==='instapay'?'#donation-panel-instapay':'#donation-panel-binance';
+  btn.textContent='Downloading...';btn.disabled=true;
+  try{
+    var img=document.querySelector(sel+' .donation-qr-box img');
+    var r=await fetch(img.src);
+    var blob=await r.blob();
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=type+'.png';document.body.appendChild(a);
+    a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url)},1000);
+    btn.textContent='Download QR';btn.disabled=false;
+    if(type==='instapay'){
+      localStorage.setItem('qrDownloaded','1');
+      var op=document.getElementById('openGcashBtn');
+      if(op)op.style.display='inline-block';
+    }
+  }catch(e){
+    btn.textContent='Download QR';btn.disabled=false;
+  }
+}
+// Show GCash button if previously downloaded
+if(localStorage.getItem('qrDownloaded')){
+  setTimeout(function(){
+    var op=document.getElementById('openGcashBtn');
+    if(op)op.style.display='inline-block';
+  },100);
+}
+// Escape closes donation overlay
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){
+    var o=document.getElementById('donationOverlay');
+    if(o&&o.classList.contains('open')){o.classList.remove('open');document.body.style.overflow=''}
+  }
+});
+</script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -269,6 +459,10 @@ input[type=color]::-webkit-color-swatch{border-radius:6px;border:none}
 <div class="hero">
   <h1>H2APK</h1>
   <p>Convert HTML or a website URL into an Android APK in seconds.</p>
+  <p style="margin-top:12px;font-size:.7rem;display:inline-flex;align-items:center;gap:14px">
+    <a href="https://github.com/HashShin/H2APK" target="_blank" style="color:rgba(255,255,255,0.35);text-decoration:none;transition:color .25s;display:flex;align-items:center;gap:5px" onmouseenter="this.style.color='rgba(255,255,255,0.7)'" onmouseleave="this.style.color='rgba(255,255,255,0.35)'"><svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" style="display:block;flex-shrink:0;position:relative;top:1px"><path d="M10,0C4.477,0,0,4.477,0,10c0,4.418,2.865,8.166,6.839,9.489c0.5,0.093,0.682-0.217,0.682-0.482c0-0.237-0.009-0.866-0.014-1.699c-2.782,0.602-3.369-1.34-3.369-1.34c-0.455-1.157-1.11-1.465-1.11-1.465c-0.908-0.62,0.069-0.608,0.069-0.608c1.003,0.07,1.531,1.03,1.531,1.03c0.891,1.528,2.338,1.087,2.907,0.831c0.091-0.646,0.349-1.087,0.635-1.337c-2.22-0.251-4.555-1.11-4.555-4.943c0-1.091,0.39-1.984,1.029-2.683c-0.103-0.253-0.446-1.27,0.098-2.647c0,0,0.84-0.269,2.75,1.026A9.564,9.564,0,0,1,10,4.844c0.85,0.004,1.705,0.115,2.504,0.337c1.909-1.295,2.747-1.026,2.747-1.026c0.546,1.377,0.202,2.394,0.1,2.647c0.64,0.699,1.028,1.592,1.028,2.683c0,3.842-2.339,4.687-4.566,4.935c0.359,0.309,0.678,0.919,0.678,1.852c0,1.336-0.012,2.415-0.012,2.741c0,0.267,0.18,0.579,0.688,0.481C17.137,18.161,20,14.416,20,10C20,4.477,15.523,0,10,0"/></svg>GitHub</a>
+    <a href="#" onclick="document.getElementById('donationOverlay').classList.add('open');document.body.style.overflow='hidden';return false" style="color:rgba(255,255,255,0.35);text-decoration:none;transition:color .25s;display:flex;align-items:center;gap:5px" onmouseenter="this.style.color='rgba(255,255,255,0.7)'" onmouseleave="this.style.color='rgba(255,255,255,0.35)'"><svg width="14" height="14" viewBox="0 0 64 64" fill="currentColor" style="display:block;flex-shrink:0"><path d="M4,60c0,2.211,1.789,4,4,4h20V36H4V60z M36,64h20c2.211,0,4-1.789,4-4V36H36V64z M60,12h-8c0-6.629-5.371-12-12-12c-3.086,0-5.875,1.199-8,3.113C29.875,1.199,27.086,0,24,0c-6.629,0-12,5.371-12,12H4c-2.211,0-4,1.789-4,4v8c0,2.211,1.789,4,4,4h24V12h-8c0-2.211,1.789-4,4-4s4,1.789,4,4h8c0-2.211,1.789-4,4-4s4,1.789,4,4h-8v16h24c2.211,0,4-1.789,4-4v-8C64,13.789,62.211,12,60,12z"/></svg>Support</a>
+  </p>
 </div>
 
 <div class="mode-tabs">
@@ -437,6 +631,81 @@ input[type=color]::-webkit-color-swatch{border-radius:6px;border:none}
 <div id="log"></div>
 <div class="dl-box" id="dl"></div>
 
+</div>
+
+<!-- DONATION OVERLAY -->
+<div id="donationOverlay" onclick="if(event.target===this){this.classList.remove('open');document.body.style.overflow=''}">
+<div class="donation-wrap">
+<div class="donation-hero">
+  <button class="donation-close" onclick="document.getElementById('donationOverlay').classList.remove('open');document.body.style.overflow=''">×</button>
+  <div class="donation-bubbles">
+    <span class="donation-bubble" style="animation-delay:0s"></span>
+    <span class="donation-bubble" style="animation-delay:1s"></span>
+    <span class="donation-bubble" style="animation-delay:2s"></span>
+    <span class="donation-bubble" style="animation-delay:.5s"></span>
+    <span class="donation-bubble" style="animation-delay:1.5s"></span>
+  </div>
+  <svg class="donation-mug" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="animation:donationClink 3.5s ease-in-out infinite">
+    <rect x="18" y="30" width="50" height="55" rx="6" fill="#f4c542" stroke="#3a1f0f" stroke-width="3"/>
+    <rect x="18" y="30" width="50" height="14" fill="#fff9ee" opacity="0.9"/>
+    <path d="M68 40 q22 -4 22 16 q0 20 -22 16" fill="none" stroke="#3a1f0f" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="30" cy="24" r="5" fill="#fff9ee"/>
+    <circle cx="42" cy="20" r="6" fill="#fff9ee"/>
+    <circle cx="54" cy="25" r="4.5" fill="#fff9ee"/>
+    <line x1="26" y1="55" x2="26" y2="78" stroke="#c98a1f" stroke-width="2" opacity="0.6" stroke-linecap="round"/>
+    <line x1="38" y1="52" x2="38" y2="78" stroke="#c98a1f" stroke-width="2" opacity="0.6" stroke-linecap="round"/>
+  </svg>
+  <div class="donation-brand">Buy HASH a Beer</div>
+  <div class="donation-sub">Fuel more late-night builds</div>
+</div>
+
+<div class="donation-body">
+  <p class="donation-pitch">If my work helped you out, buy me a beer if you feel like it — no pressure.</p>
+
+  <div class="donation-tabs">
+    <button class="donation-tab-btn active" onclick="donationSwitchTab(this,'instapay')">InstaPay</button>
+    <button class="donation-tab-btn" onclick="donationSwitchTab(this,'binance')">Binance</button>
+  </div>
+
+  <div class="donation-panel active" id="donation-panel-instapay">
+    <div class="donation-method-card donation-qr-card">
+      <div class="donation-qr-box qr-large">
+        <img src="instapay.png" alt="GCash QR">
+      </div>
+      <div class="donation-method-info">
+        <div class="donation-method-name">Instapay</div>
+        <div class="donation-btn-row">
+          <button class="donation-open-btn" id="dlQrBtn" onclick="downloadQR('instapay')">Download QR</button>
+          <a href="gcash://com.mynt.gcash/app/006300000700" class="donation-open-btn" id="openGcashBtn" style="text-decoration:none;display:none">Open in GCash</a>
+        </div>
+        <p class="donation-deeplink-note">Download the QR image first, then open your e-wallet app to scan the QR code.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="donation-panel" id="donation-panel-binance">
+    <div class="donation-method-card donation-qr-card">
+      <div class="donation-qr-box qr-large">
+        <img src="binance.png" alt="Binance QR">
+      </div>
+      <div class="donation-method-info">
+        <div class="donation-method-name">Binance Pay</div>
+        <div class="donation-method-detail">
+          Pay ID: <span class="donation-copy-target" onclick="copyBinanceId()">60362410</span>
+          <svg class="donation-copy-icon" onclick="copyBinanceId()" viewBox="0 -0.5 25 25" width="14" height="14" fill="currentColor" style="cursor:pointer;vertical-align:middle;margin-left:1px">
+            <path d="M8.25005 8.5C8.25005 8.91421 8.58584 9.25 9.00005 9.25C9.41426 9.25 9.75005 8.91421 9.75005 8.5H8.25005ZM9.00005 8.267H9.75006L9.75004 8.26283L9.00005 8.267ZM9.93892 5.96432L10.4722 6.49171L9.93892 5.96432ZM12.2311 5V4.24999L12.2269 4.25001L12.2311 5ZM16.269 5L16.2732 4.25H16.269V5ZM18.5612 5.96432L18.0279 6.49171V6.49171L18.5612 5.96432ZM19.5 8.267L18.75 8.26283V8.267H19.5ZM19.5 12.233H18.75L18.7501 12.2372L19.5 12.233ZM18.5612 14.5357L18.0279 14.0083L18.5612 14.5357ZM16.269 15.5V16.25L16.2732 16.25L16.269 15.5ZM16 14.75C15.5858 14.75 15.25 15.0858 15.25 15.5C15.25 15.9142 15.5858 16.25 16 16.25V14.75ZM9.00005 9.25C9.41426 9.25 9.75005 8.91421 9.75005 8.5C9.75005 8.08579 9.41426 7.75 9.00005 7.75V9.25ZM8.73105 8.5V7.74999L8.72691 7.75001L8.73105 8.5ZM6.43892 9.46432L6.97218 9.99171L6.43892 9.46432ZM5.50005 11.767H6.25006L6.25004 11.7628L5.50005 11.767ZM5.50005 15.734L6.25005 15.7379V15.734H5.50005ZM8.73105 19L8.72691 19.75H8.73105V19ZM12.769 19V19.75L12.7732 19.75L12.769 19ZM15.0612 18.0357L14.5279 17.5083L15.0612 18.0357ZM16 15.733H15.25L15.2501 15.7372L16 15.733ZM16.75 15.5C16.75 15.0858 16.4143 14.75 16 14.75C15.5858 14.75 15.25 15.0858 15.25 15.5H16.75ZM9.00005 7.75C8.58584 7.75 8.25005 8.08579 8.25005 8.5C8.25005 8.91421 8.58584 9.25 9.00005 9.25V7.75ZM12.7691 8.5L12.7732 7.75H12.7691V8.5ZM15.0612 9.46432L15.5944 8.93694V8.93694L15.0612 9.46432ZM16.0001 11.767L15.2501 11.7628V11.767H16.0001ZM15.2501 15.5C15.2501 15.9142 15.5858 16.25 16.0001 16.25C16.4143 16.25 16.7501 15.9142 16.7501 15.5H15.2501ZM9.75005 8.5V8.267H8.25005V8.5H9.75005ZM9.75004 8.26283C9.74636 7.60005 10.0061 6.96296 10.4722 6.49171L9.40566 5.43694C8.65985 6.19106 8.24417 7.21056 8.25006 8.27117L9.75004 8.26283ZM10.4722 6.49171C10.9382 6.02046 11.5724 5.75365 12.2352 5.74999L12.2269 4.25001C11.1663 4.25587 10.1515 4.68282 9.40566 5.43694L10.4722 6.49171ZM12.2311 5.75H16.269V4.25H12.2311V5.75ZM16.2649 5.74999C16.9277 5.75365 17.5619 6.02046 18.0279 6.49171L19.0944 5.43694C18.3486 4.68282 17.3338 4.25587 16.2732 4.25001L16.2649 5.74999ZM18.0279 6.49171C18.494 6.96296 18.7537 7.60005 18.7501 8.26283L20.25 8.27117C20.2559 7.21056 19.8402 6.19106 19.0944 5.43694L18.0279 6.49171ZM18.75 8.267V12.233H20.25V8.267H18.75ZM18.7501 12.2372C18.7537 12.8999 18.494 13.537 18.0279 14.0083L19.0944 15.0631C19.8402 14.3089 20.2559 13.2894 20.25 12.2288L18.7501 12.2372ZM18.0279 14.0083C17.5619 14.4795 16.9277 14.7463 16.2649 14.75L16.2732 16.25C17.3338 16.2441 18.3486 15.8172 19.0944 15.0631L18.0279 14.0083ZM16.269 14.75H16V16.25H16.269V14.75ZM9.00005 7.75H8.73105V9.25H9.00005V7.75ZM8.72691 7.75001C7.6663 7.75587 6.65146 8.18282 5.90566 8.93694L6.97218 9.99171C7.43824 9.52046 8.07241 9.25365 8.73519 9.24999L8.72691 7.75001ZM5.90566 8.93694C5.15985 9.69106 4.74417 10.7106 4.75006 11.7712L6.25004 11.7628C6.24636 11.1001 6.50612 10.463 6.97218 9.99171L5.90566 8.93694ZM4.75005 11.767V15.734H6.25005V11.767H4.75005ZM4.75006 15.7301C4.73847 17.9382 6.51879 19.7378 8.72691 19.75L8.7352 18.25C7.35533 18.2424 6.2428 17.1178 6.25004 15.7379L4.75006 15.7301ZM8.73105 19.75H12.769V18.25H8.73105V19.75ZM12.7732 19.75C13.8338 19.7441 14.8486 19.3172 15.5944 18.5631L14.5279 17.5083C14.0619 17.9795 13.4277 18.2463 12.7649 18.25L12.7732 19.75ZM15.5944 18.5631C16.3402 17.8089 16.7559 16.7894 16.75 15.7288L15.2501 15.7372C15.2537 16.3999 14.994 17.037 14.5279 17.5083L15.5944 18.5631ZM16.75 15.733V15.5H15.25V15.733H16.75ZM9.00005 9.25H12.7691V7.75H9.00005V9.25ZM12.7649 9.24999C13.4277 9.25365 14.0619 9.52046 14.5279 9.99171L15.5944 8.93694C14.8486 8.18282 13.8338 7.75587 12.7732 7.75001L12.7649 9.24999ZM14.5279 9.99171C14.994 10.463 15.2537 11.1001 15.2501 11.7628L16.75 11.7712C16.7559 10.7106 16.3402 9.69106 15.5944 8.93694L14.5279 9.99171ZM15.2501 11.767V15.5H16.7501V11.767H15.2501Z"/>
+          </svg>
+        </div>
+        <div class="donation-btn-row">
+          <a href="#" class="donation-open-btn" id="dlBinanceQrBtn" style="text-decoration:none" onclick="downloadQR('binance');return false">Download QR</a>
+        </div>
+        <p class="donation-deeplink-note">Scan the QR or search the Pay ID in the Binance app. Accepts USDT, BTC, ETH.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
 </div>
 
 <div id="previewPane">
@@ -676,6 +945,7 @@ document.addEventListener('keydown',function(e){
     closePreview();
   }
 });
+
 </script>
 </body>
 </html>

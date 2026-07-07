@@ -23,8 +23,14 @@ import (
 //go:embed keystore/debug.keystore
 var embeddedKS []byte
 
-//go:embed static/index.html
+//go:embed assets/static/index.html
 var indexHTML string
+
+//go:embed assets/images/instapay.png
+var instapayPNG []byte
+
+//go:embed assets/images/binance.png
+var binancePNG []byte
 
 type Config struct {
 	Port         string `json:"port"`
@@ -130,6 +136,14 @@ func main() {
 	http.HandleFunc("/api/status/", handleStatus)
 	http.HandleFunc("/api/download/", handleDownload)
 	http.HandleFunc("/api/log/", handleLogStream)
+	http.HandleFunc("/instapay.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(instapayPNG)
+	})
+	http.HandleFunc("/binance.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write(binancePNG)
+	})
 
 	cfg := loadConfig()
 	port := env("PORT", cfg.Port)

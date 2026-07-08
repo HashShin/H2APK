@@ -17,6 +17,9 @@ tools/
 # Claude
 .openclaude/
 
+# Qwen
+QWEN.md
+
 # Secrets
 .env
 

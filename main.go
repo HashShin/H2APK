@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
 	"log"
 	"net"
@@ -81,6 +83,9 @@ type BuildRequest struct {
 	SplashAnimation   string `json:"splash_animation"`
 	DisableCopyText   bool   `json:"disable_copy_text"`
 	HideScrollbars    bool   `json:"hide_scrollbars"`
+	CameraPermission  bool   `json:"-"`
+	MicPermission     bool   `json:"-"`
+	NotifPermission   bool   `json:"-"`
 	KeystoreBase64    string `json:"keystore"`
 	KeystorePass      string `json:"ks_pass"`
 	KeyAlias          string `json:"key_alias"`
@@ -317,6 +322,30 @@ func handleBuild(w http.ResponseWriter, r *http.Request) {
 	builds[id] = &record{status: "building", logCh: make(chan string, 50)}
 	buildsMu.Unlock()
 
+	// Auto-detect camera/mic/notification needs from content
+	if isURL {
+		// URL mode: can't scan remote content — enable all, harmless if unused
+		req.CameraPermission = true
+		req.MicPermission = true
+		req.NotifPermission = true
+	} else {
+		content := strings.ToLower(req.HTML + req.CSS + req.JS)
+		for _, data := range req.AssetFiles {
+			content += strings.ToLower(data)
+		}
+		if strings.Contains(content, "getusermedia") {
+			req.CameraPermission = strings.Contains(content, "{video") || strings.Contains(content, "video:") || strings.Contains(content, "video :")
+			req.MicPermission = strings.Contains(content, "{audio") || strings.Contains(content, "audio:") || strings.Contains(content, "audio :")
+		}
+		// Detect Notification API usage (JS bridge or Web Notification API)
+		req.NotifPermission = strings.Contains(content, "notification.requestpermission") ||
+			strings.Contains(content, "new notification(") ||
+			strings.Contains(content, "notification.permission") ||
+			strings.Contains(content, "h2a.shownotification") ||
+			strings.Contains(content, "h2a.requestnotificationpermission") ||
+			strings.Contains(content, "h2a.getnotificationpermission")
+	}
+	log.Printf("Auto-detect: camera=%t mic=%t notif=%t isURL=%t", req.CameraPermission, req.MicPermission, req.NotifPermission, isURL)
 	go doBuild(id, req, isURL)
 	writeJSON(w, 202, BuildInfo{Success: true, BuildID: id})
 }
@@ -446,10 +475,10 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 		if err != nil {
 			logf("Icon decode failed, skipping: %v", err)
 		} else {
-			drawableDir := filepath.Join(proj, "res", "drawable")
-			os.MkdirAll(drawableDir, 0755)
-			iconPath := filepath.Join(drawableDir, "icon.png")
-			os.WriteFile(iconPath, iconData, 0644)
+			mipmapDir := filepath.Join(proj, "res", "mipmap")
+			os.MkdirAll(mipmapDir, 0755)
+			iconPath := filepath.Join(mipmapDir, "icon.png")
+			os.WriteFile(iconPath, compressPNG(iconData), 0644)
 
 			os.MkdirAll(flatDir, 0755)
 			out, err := exec.Command("aapt2", "compile", "-o", flatDir, iconPath).CombinedOutput()
@@ -459,6 +488,8 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 			} else {
 				flatFiles, _ = filepath.Glob(flatDir + "/*.flat")
 				hasIcon = true
+				// Also copy to assets for NotificationHelper
+				os.WriteFile(filepath.Join(assets, "icon.png"), compressPNG(iconData), 0644)
 			}
 		}
 	}
@@ -491,7 +522,7 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	logf("Writing AndroidManifest.xml")
 	iconAttr := ""
 	if hasIcon {
-		iconAttr = ` android:icon="@drawable/icon"`
+		iconAttr = ` android:icon="@mipmap/icon"`
 	}
 	var splashActivity string
 	if req.SplashEnabled {
@@ -514,11 +545,22 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	m := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="%s">
   <uses-permission android:name="android.permission.INTERNET"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>`, req.PackageName)
+	if req.CameraPermission {
+		m += "\n  <uses-permission android:name=\"android.permission.CAMERA\"/>"
+	}
+	if req.MicPermission {
+		m += "\n  <uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>"
+		m += "\n  <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>"
+	}
+	if req.NotifPermission {
+		m += "\n  <uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>"
+	}
+	m += fmt.Sprintf(`
   <application android:label="%s"%s android:usesCleartextTraffic="true">
 %s
   </application>
-</manifest>`, req.PackageName, xmlEscape(req.AppName), iconAttr, splashActivity)
+</manifest>`, xmlEscape(req.AppName), iconAttr, splashActivity)
 	writeFile(filepath.Join(proj, "AndroidManifest.xml"), m)
 
 	// 3. assets (HTML mode only)
@@ -533,7 +575,12 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 			if err == nil {
 				// sanitize: strip any path components to prevent traversal
 				clean := filepath.Base(name)
-				writeFile(filepath.Join(assets, clean), string(decoded))
+				content := string(decoded)
+				// Optimize PNG images
+				if strings.HasSuffix(strings.ToLower(clean), ".png") {
+					content = string(compressPNG(decoded))
+				}
+				writeFile(filepath.Join(assets, clean), content)
 			}
 		}
 	}
@@ -542,16 +589,115 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	logf("Compiling Java source")
 	srcDir := filepath.Join(work, "src", "com", "h2a")
 	os.MkdirAll(srcDir, 0755)
-	writeFile(filepath.Join(srcDir, "PaddingClient.java"),
-		genPaddingClient(req.BlockAds || req.AdGuardDNS, req.AdGuardDNS))
-	writeFile(filepath.Join(srcDir, "H2AChromeClient.java"),
-		`package com.h2a;
-import android.webkit.WebChromeClient;
-import android.webkit.WebView;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.FrameLayout;
+	// generate PaddingClient after we know isURL/needsPerms
+	// (moved later — see below before writeFile WebViewActivity)
+	chromePermCode := ""
+	if req.CameraPermission || req.MicPermission {
+		camFlag := "false"
+		if req.CameraPermission { camFlag = "true" }
+		micFlag := "false"
+		if req.MicPermission { micFlag = "true" }
+		chromePermCode = fmt.Sprintf(`
+import android.webkit.PermissionRequest;
 
+public class H2AChromeClient extends WebChromeClient {
+  private View customView;
+  private CustomViewCallback callback;
+  private FrameLayout container;
+  private WebView webView;
+  private PermissionRequest pendingPermission;
+  private WebViewActivity activity;
+  private boolean cameraEnabled = %s;
+  private boolean micEnabled = %s;
+  private static final int REQ_CAMERA = 1001;
+  private static final int REQ_MIC = 1002;
+
+  public H2AChromeClient(FrameLayout container, WebView webView) {
+    this.container = container;
+    this.webView = webView;
+    this.activity = (WebViewActivity) webView.getContext();
+  }
+
+  @Override
+  public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+    return false;
+  }
+
+  @Override
+  public void onShowCustomView(View view, CustomViewCallback callback) {
+    if (this.customView != null) {
+      callback.onCustomViewHidden();
+      return;
+    }
+    this.customView = view;
+    this.callback = callback;
+    webView.setVisibility(View.GONE);
+    container.addView(view, new FrameLayout.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      ViewGroup.LayoutParams.MATCH_PARENT
+    ));
+  }
+
+  @Override
+  public void onHideCustomView() {
+    if (customView == null) return;
+    webView.setVisibility(View.VISIBLE);
+    container.removeView(customView);
+    customView = null;
+    if (callback != null) {
+      callback.onCustomViewHidden();
+      callback = null;
+    }
+  }
+
+  public boolean dismissCustomView() {
+    if (customView == null) return false;
+    onHideCustomView();
+    return true;
+  }
+
+  @Override
+  public void onPermissionRequest(PermissionRequest request) {
+    boolean needCam = false, needMic = false;
+    for (String r : request.getResources()) {
+      if (r.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) needCam = true;
+      if (r.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) needMic = true;
+    }
+    boolean camOK = true, micOK = true;
+    if (android.os.Build.VERSION.SDK_INT >= 23) {
+      if (needCam && cameraEnabled) {
+        camOK = activity.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+      }
+      if (needMic && micEnabled) {
+        micOK = activity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+      }
+    }
+    if (camOK && micOK) {
+      request.grant(request.getResources());
+      return;
+    }
+    pendingPermission = request;
+    if (android.os.Build.VERSION.SDK_INT >= 23) {
+      if (needCam && !camOK) activity.reRequestPermission(android.Manifest.permission.CAMERA, REQ_CAMERA);
+      if (needMic && !micOK) activity.reRequestPermission(android.Manifest.permission.RECORD_AUDIO, REQ_MIC);
+    } else {
+      request.deny();
+      pendingPermission = null;
+    }
+  }
+
+  public void onPermissionResult(int requestCode, boolean granted) {
+    if (pendingPermission == null) return;
+    if (granted) {
+      pendingPermission.grant(pendingPermission.getResources());
+    } else {
+      pendingPermission.deny();
+    }
+    pendingPermission = null;
+  }
+}`, camFlag, micFlag)
+	} else {
+		chromePermCode = `
 public class H2AChromeClient extends WebChromeClient {
   private View customView;
   private CustomViewCallback callback;
@@ -600,7 +746,15 @@ public class H2AChromeClient extends WebChromeClient {
     onHideCustomView();
     return true;
   }
-}`)
+}`
+	}
+	writeFile(filepath.Join(srcDir, "H2AChromeClient.java"),
+		`package com.h2a;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;`+chromePermCode)
 	indicatorField := ""
 	pullInit := ""
 	themeColorStr, themeColorInt := parseThemeColor(req)
@@ -637,6 +791,8 @@ public class H2AChromeClient extends WebChromeClient {
 			clientCreate = "new PaddingClient(true)"
 		}
 	}
+	needsPerms := req.CameraPermission || req.MicPermission
+	useAssetLoader := !isURL && needsPerms
 	disableCopyImplements := ", android.view.View.OnLongClickListener"
 	disableCopyInit := "wv.setOnLongClickListener(this);"
 	disableCopyMethod := ""
@@ -652,6 +808,126 @@ public class H2AChromeClient extends WebChromeClient {
     return r != null && (r.getType() == WebView.HitTestResult.SRC_ANCHOR_TYPE || r.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE);
   }`
 	}
+
+	permImports := ""
+	permSettings := ""
+	permFields := ""
+	permOnCreate := ""
+	permMethods := ""
+	if needsPerms {
+		permImports = "\nimport android.Manifest;\nimport android.content.pm.PackageManager;"
+		permSettings = "ws.setMediaPlaybackRequiresUserGesture(false);"
+		permFields = ""
+		// asset serving is handled entirely in PaddingClient.shouldInterceptRequest
+		permMethods = `
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] perms, int[] grantResults) {
+    boolean g = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+    if (chromeClient != null) chromeClient.onPermissionResult(requestCode, g);
+  }
+
+  public void reRequestPermission(String perm, int code) {
+    requestPermissions(new String[]{perm}, code);
+  }`
+	}
+	if req.NotifPermission {
+		if permImports == "" {
+			permImports = "\nimport android.Manifest;\nimport android.content.pm.PackageManager;"
+		}
+		permOnCreate += `
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 2001);
+      }
+    }`
+		if permMethods == "" {
+			permMethods = `
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] perms, int[] grantResults) {
+  }`
+		}
+	}
+
+	notifInterface := ""
+	if req.NotifPermission {
+		notifInterface = "wv.addJavascriptInterface(new NotificationHelper(this), \"H2A\");"
+	}
+
+	writeFile(filepath.Join(srcDir, "PaddingClient.java"),
+		genPaddingClient(req.BlockAds || req.AdGuardDNS, req.AdGuardDNS, useAssetLoader))
+
+	if req.NotifPermission {
+		writeFile(filepath.Join(srcDir, "NotificationHelper.java"),
+			`package com.h2a;
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.os.Build;
+import android.webkit.JavascriptInterface;
+
+public class NotificationHelper {
+  private Activity activity;
+  private android.graphics.Bitmap appIcon;
+  private int iconResId;
+
+  public NotificationHelper(Activity a) {
+    this.activity = a;
+    iconResId = a.getResources().getIdentifier("icon", "mipmap", a.getPackageName());
+    if (iconResId == 0) iconResId = android.R.drawable.ic_dialog_info;
+    try {
+      java.io.InputStream is = a.getAssets().open("icon.png");
+      appIcon = android.graphics.BitmapFactory.decodeStream(is);
+      is.close();
+    } catch (Exception e) {
+      appIcon = null;
+    }
+    if (Build.VERSION.SDK_INT >= 26) {
+      NotificationChannel ch = new NotificationChannel(
+        "h2a_notifs", "Notifications", NotificationManager.IMPORTANCE_DEFAULT);
+      activity.getSystemService(NotificationManager.class).createNotificationChannel(ch);
+    }
+  }
+
+  @JavascriptInterface
+  public void showNotification(String title, String body) {
+    if (Build.VERSION.SDK_INT >= 33 &&
+        activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+        != android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+    Notification.Builder b = new Notification.Builder(activity, "h2a_notifs")
+      .setContentTitle(title)
+      .setContentText(body)
+      .setSmallIcon(iconResId)
+      .setAutoCancel(true);
+    if (appIcon != null) b.setLargeIcon(appIcon);
+    activity.getSystemService(NotificationManager.class)
+      .notify((int)(System.currentTimeMillis() % Integer.MAX_VALUE), b.build());
+  }
+
+  @JavascriptInterface
+  public String getNotificationPermission() {
+    if (Build.VERSION.SDK_INT >= 33) {
+      return activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+        == android.content.pm.PackageManager.PERMISSION_GRANTED ? "granted" : "denied";
+    }
+    return "granted";
+  }
+
+  @JavascriptInterface
+  public void requestNotificationPermission() {
+    if (Build.VERSION.SDK_INT >= 33) {
+      activity.requestPermissions(
+        new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 2001);
+    }
+  }
+}`)
+	}
+
+	assetInit := ""
+	if useAssetLoader {
+		loadURL = `https://appassets.androidplatform.net/index.html`
+	}
+
 	writeFile(filepath.Join(srcDir, "WebViewActivity.java"),
 		fmt.Sprintf(`package com.h2a;
 import android.app.Activity;
@@ -673,12 +949,13 @@ import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.content.res.Configuration;
-import android.util.Log;
+import android.util.Log;%s
 public class WebViewActivity extends Activity implements DownloadListener%s {
   private WebView wv;
   private H2AChromeClient chromeClient;
   private long lastBackPress = 0;
   private Toast toast;
+  %s
   %s
 
   @Override
@@ -695,6 +972,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     ws.setJavaScriptEnabled(true);
     ws.setDomStorageEnabled(true);
     ws.setSupportMultipleWindows(false);
+    %s
     if (%t) {
       ws.setUseWideViewPort(true);
       ws.setLoadWithOverviewMode(true);
@@ -715,9 +993,12 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     chromeClient = new H2AChromeClient(fl, wv);
     wv.setWebChromeClient(chromeClient);
     wv.setDownloadListener(this);
+    %s
+    %s
     wv.loadUrl("%s");
     fl.setBackgroundColor(%s);
     fl.addView(wv);
+    %s
     %s
     %s
     setContentView(fl);
@@ -792,7 +1073,8 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
     if (dm != null) dm.enqueue(req);
   }%s
-}`, disableCopyImplements, indicatorField, !req.HideScrollbars, !req.HideScrollbars, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, loadURL, flBg, pullInit, disableCopyInit, disableCopyMethod))
+  %s
+}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods))
 
 	if req.SplashEnabled {
 		duration := req.SplashDuration
@@ -1141,6 +1423,9 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		filepath.Join(srcDir, "WebViewActivity.java"),
 		filepath.Join(srcDir, "H2AChromeClient.java"),
 	}
+	if req.NotifPermission {
+		javacFiles = append(javacFiles, filepath.Join(srcDir, "NotificationHelper.java"))
+	}
 	if req.SplashEnabled {
 		javacFiles = append(javacFiles, filepath.Join(srcDir, "SplashActivity.java"))
 	}
@@ -1313,6 +1598,35 @@ func wrapHTML(req BuildRequest) string {
 		css += "\n  " + req.CSS
 	}
 	css = "\n  <style>\n  body{margin:0}\n" + css + "\n  </style>"
+	notifShim := ""
+	if req.NotifPermission {
+		notifShim = `
+  <script>
+(function(){
+  if(typeof Notification!=='undefined')return;
+  if(typeof H2A==='undefined'||!H2A.showNotification)return;
+  var p=H2A.getNotificationPermission(),cbs=[];
+  window.Notification=function(t,o){
+    if(p==='granted')H2A.showNotification(t,(o&&o.body)||'');
+  };
+  Object.defineProperty(Notification,'permission',{get:function(){return p;}});
+  Notification.requestPermission=function(){
+    return new Promise(function(r){
+      if(p==='granted'){r('granted');return;}
+      cbs.push(r);H2A.requestNotificationPermission();
+      var n=0,i=setInterval(function(){
+        p=H2A.getNotificationPermission();
+        if(p==='granted'||++n>60){
+          clearInterval(i);
+          cbs.forEach(function(c){c(p==='granted'?'granted':'denied');});
+          cbs=[];
+        }
+      },500);
+    });
+  };
+})();
+  </script>`
+	}
 	js := ""
 	if req.JS != "" {
 		js = "\n  <script>\n" + req.JS + "\n  </script>"
@@ -1322,12 +1636,29 @@ func wrapHTML(req BuildRequest) string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes,maximum-scale=5.0">
-  <title>%s</title>%s
+  <title>%s</title>%s%s
 </head>
 <body>
 %s%s
 </body>
-</html>`, req.AppName, css, req.HTML, js)
+</html>`, req.AppName, css, notifShim, req.HTML, js)
+}
+
+var pngEncoder = &png.Encoder{CompressionLevel: png.BestCompression}
+
+func compressPNG(data []byte) []byte {
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data // not a valid PNG, return as-is
+	}
+	var buf bytes.Buffer
+	if err := pngEncoder.Encode(&buf, img); err != nil {
+		return data
+	}
+	if buf.Len() >= len(data) {
+		return data // no savings
+	}
+	return buf.Bytes()
 }
 
 func findAndroidJar() string {
@@ -1369,8 +1700,79 @@ func fail(rec *record, msg string) {
 	panic("build-fail")
 }
 
-func genPaddingClient(blockAds bool, adguardDNS bool) string {
+func genPaddingClient(blockAds bool, adguardDNS bool, useAssetLoader bool) string {
 	if !blockAds {
+		if useAssetLoader {
+			return `package com.h2a;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.net.Uri;
+import android.util.Log;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+public class PaddingClient extends WebViewClient {
+  public interface PullCallback {
+    void onPageFinished();
+  }
+  private PullCallback callback;
+  private static final String SECURE_HOST = "appassets.androidplatform.net";
+  public PaddingClient() { this.callback = null; }
+  public PaddingClient(PullCallback cb) { this.callback = cb; }
+  @Override
+  public boolean shouldOverrideUrlLoading(WebView view, String url) {
+    view.loadUrl(url);
+    return true;
+  }
+  private static String guessMime(String path) {
+    String l = path.toLowerCase();
+    if (l.endsWith(".html") || l.endsWith(".htm")) return "text/html";
+    if (l.endsWith(".css")) return "text/css";
+    if (l.endsWith(".js")) return "application/javascript";
+    if (l.endsWith(".json")) return "application/json";
+    if (l.endsWith(".png")) return "image/png";
+    if (l.endsWith(".jpg") || l.endsWith(".jpeg")) return "image/jpeg";
+    if (l.endsWith(".gif")) return "image/gif";
+    if (l.endsWith(".svg")) return "image/svg+xml";
+    if (l.endsWith(".webp")) return "image/webp";
+    if (l.endsWith(".ico")) return "image/x-icon";
+    if (l.endsWith(".woff")) return "font/woff";
+    if (l.endsWith(".woff2")) return "font/woff2";
+    return "text/plain";
+  }
+  private WebResourceResponse serveAsset(WebView view, String url) {
+    try {
+      android.net.Uri uri = android.net.Uri.parse(url);
+      if (SECURE_HOST.equals(uri.getHost())) {
+        String path = uri.getPath();
+        if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
+        if (path.startsWith("/")) path = path.substring(1);
+        InputStream is = view.getContext().getAssets().open(path);
+        return new WebResourceResponse(guessMime(path), null, is);
+      }
+    } catch (Exception e) {}
+    return null;
+  }
+  @Override
+  public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+    WebResourceResponse asset = serveAsset(view, url);
+    if (asset != null) return asset;
+    return super.shouldInterceptRequest(view, url);
+  }
+  @Override
+  public WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest request) {
+    WebResourceResponse asset = serveAsset(view, request.getUrl().toString());
+    if (asset != null) return asset;
+    return super.shouldInterceptRequest(view, request);
+  }
+  @Override
+  public void onPageFinished(WebView view, String url) {
+    super.onPageFinished(view, url);
+    view.evaluateJavascript("(function(){var m=document.querySelector('meta[name=viewport]');if(m)m.content+=(m.content?',':'')+'user-scalable=yes,maximum-scale=5.0';else{var n=document.createElement('meta');n.name='viewport';n.content='width=device-width,initial-scale=1.0,user-scalable=yes,maximum-scale=5.0';document.head.appendChild(n);}})()", null);
+    if (callback != null) callback.onPageFinished();
+  }
+}`
+		}
 		return `package com.h2a;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -1398,7 +1800,9 @@ public class PaddingClient extends WebViewClient {
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.net.Uri;
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.net.DatagramSocket;
@@ -1414,6 +1818,7 @@ public class PaddingClient extends WebViewClient {
   private boolean useAdGuardDNS;
   private HashMap<String,String> dnsCache;
   private int dnsSeq;
+  private boolean useAssetLoader = ` + fmt.Sprintf("%t", useAssetLoader) + `;
   public PaddingClient() { this.callback = null; this.blockAds = false; this.useAdGuardDNS = false; }
   public PaddingClient(PullCallback cb) { this.callback = cb; this.blockAds = false; this.useAdGuardDNS = false; }
   public PaddingClient(boolean block) { this.callback = null; init(block, false); }
@@ -1518,12 +1923,43 @@ public class PaddingClient extends WebViewClient {
     } catch (Exception e) {}
     return false;
   }
+  private static String guessMime(String path) {
+    String l = path.toLowerCase();
+    if (l.endsWith(".html") || l.endsWith(".htm")) return "text/html";
+    if (l.endsWith(".css")) return "text/css";
+    if (l.endsWith(".js")) return "application/javascript";
+    if (l.endsWith(".json")) return "application/json";
+    if (l.endsWith(".png")) return "image/png";
+    if (l.endsWith(".jpg") || l.endsWith(".jpeg")) return "image/jpeg";
+    if (l.endsWith(".gif")) return "image/gif";
+    if (l.endsWith(".svg")) return "image/svg+xml";
+    if (l.endsWith(".webp")) return "image/webp";
+    if (l.endsWith(".ico")) return "image/x-icon";
+    if (l.endsWith(".woff")) return "font/woff";
+    if (l.endsWith(".woff2")) return "font/woff2";
+    return "text/plain";
+  }
+  private WebResourceResponse serveAsset(WebView view, String url) {
+    try {
+      Uri uri = Uri.parse(url);
+      if ("appassets.androidplatform.net".equals(uri.getHost())) {
+        String path = uri.getPath();
+        if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
+        if (path.startsWith("/")) path = path.substring(1);
+        InputStream is = view.getContext().getAssets().open(path);
+        return new WebResourceResponse(guessMime(path), null, is);
+      }
+    } catch (Exception e) {}
+    return null;
+  }
   @Override
   public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
+    if (useAssetLoader) { WebResourceResponse a = serveAsset(view, url); if (a != null) return a; }
     return intercept(url);
   }
   @Override
   public WebResourceResponse shouldInterceptRequest(WebView view, android.webkit.WebResourceRequest req) {
+    if (useAssetLoader) { WebResourceResponse a = serveAsset(view, req.getUrl().toString()); if (a != null) return a; }
     return intercept(req.getUrl().toString());
   }
   private String adguardResolve(String host) {

@@ -622,6 +622,7 @@ document.addEventListener('keydown',function(e){
   </label>
   <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico" multiple onchange="handleFiles(this)" style="display:none">
   <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
+  <button onclick="previewUpload()" class="preview-btn" id="uploadPreviewBtn" style="display:none;margin-top:12px">Preview</button>
 </div>
 
 <button class="build-btn" id="btn" onclick="build()">Build APK</button>
@@ -797,6 +798,9 @@ function handleFiles(input){
         for(const name of list){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
         if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
         fl.innerHTML=html;
+        var btn=document.getElementById('uploadPreviewBtn');
+        if(uploadedFiles['index.html']){btn.style.display='inline-block';btn.classList.add('active')}
+        else{btn.style.display='none';btn.classList.remove('active')}
       }
     };
     if(isImage){
@@ -945,6 +949,21 @@ function preview(){
   var h=ta.value;
   var c=document.getElementById('css').value||'';
   var j=document.getElementById('js').value||'';
+  var blob=new Blob(['<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>',c,'</style></head><body>',h,'<script>',j,'<\/script></body></html>'],{type:'text/html'});
+  var url=URL.createObjectURL(blob);
+  document.getElementById('previewFrame').src=url;
+  document.getElementById('previewPane').classList.add('open');
+}
+
+function previewUpload(){
+  if(!uploadedFiles['index.html'])return;
+  var h=uploadedFiles['index.html'];
+  var c='';var j='';
+  for(var name in uploadedFiles){
+    var l=name.toLowerCase();
+    if(l.endsWith('.css'))c+=uploadedFiles[name]+'\n';
+    if(l.endsWith('.js'))j+=uploadedFiles[name]+'\n';
+  }
   var blob=new Blob(['<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>',c,'</style></head><body>',h,'<script>',j,'<\/script></body></html>'],{type:'text/html'});
   var url=URL.createObjectURL(blob);
   document.getElementById('previewFrame').src=url;

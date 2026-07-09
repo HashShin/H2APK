@@ -19,7 +19,7 @@ H2APK is a single-binary Go server that converts HTML content or website URLs in
 ## Install
 
 ```bash
-git clone https://github.com/HashShin/H2APK
+git clone --depth=1 https://github.com/HashShin/H2APK
 cd H2APK
 ./setup.sh
 go build -o h2apk main.go
@@ -70,6 +70,11 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 - JavaScript injection to block `window.open`, fingerprinting, and ad elements
 - Cookie blocking, password saving disabled, geolocation disabled
 - App redirect prevention (blocks `intent://`, `market://`, etc.)
+
+**Auto-detect permissions** (HTML mode)
+- Automatically scans HTML/CSS/JS content for Camera, Microphone, and Notification API usage
+- Requests only the permissions your app actually needs
+- URL mode: all three permissions enabled by default (harmless if unused)
 
 **Build experience**
 - Live build log streaming (SSE)

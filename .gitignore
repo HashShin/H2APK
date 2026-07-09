@@ -19,7 +19,6 @@ tools/
 
 # Qwen
 QWEN.md
-.qwen/
 
 # Secrets
 .env

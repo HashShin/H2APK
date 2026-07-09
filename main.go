@@ -599,6 +599,7 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	os.MkdirAll(srcDir, 0755)
 	// generate PaddingClient after we know isURL/needsPerms
 	// (moved later — see below before writeFile WebViewActivity)
+	themeColorStr, themeColorInt := parseThemeColor(req)
 	chromePermCode := ""
 	if req.CameraPermission || req.MicPermission {
 		camFlag := "false"
@@ -608,7 +609,7 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 		chromePermCode = fmt.Sprintf(`
 import android.webkit.PermissionRequest;
 
-public class H2AChromeClient extends WebChromeClient {
+public class H2AChromeClient extends WebChromeClient implements android.content.DialogInterface.OnClickListener {
   private View customView;
   private CustomViewCallback callback;
   private FrameLayout container;
@@ -619,11 +620,16 @@ public class H2AChromeClient extends WebChromeClient {
   private boolean micEnabled = %s;
   private static final int REQ_CAMERA = 1001;
   private static final int REQ_MIC = 1002;
+  private int themeColor = %d;
+  private android.webkit.JsResult pendingJsResult;
+  private android.webkit.JsPromptResult pendingPromptResult;
+  private android.widget.EditText promptInput;
 
-  public H2AChromeClient(FrameLayout container, WebView webView) {
+  public H2AChromeClient(FrameLayout container, WebView webView, int themeColor) {
     this.container = container;
     this.webView = webView;
     this.activity = (WebViewActivity) webView.getContext();
+    this.themeColor = themeColor;
   }
 
   @Override
@@ -715,20 +721,89 @@ public class H2AChromeClient extends WebChromeClient {
     activity.launchFileChooser(filePathCallback, accept);
     return true;
   }
-}`, camFlag, micFlag)
+
+  @Override
+  public void onClick(android.content.DialogInterface dialog, int which) {
+    if (which == android.content.DialogInterface.BUTTON_POSITIVE) {
+      if (pendingPromptResult != null) {
+        String val = promptInput != null ? promptInput.getText().toString() : "";
+        pendingPromptResult.confirm(val);
+      } else if (pendingJsResult != null) {
+        pendingJsResult.confirm();
+      }
+    } else {
+      if (pendingPromptResult != null) pendingPromptResult.cancel();
+      else if (pendingJsResult != null) pendingJsResult.cancel();
+    }
+    pendingJsResult = null;
+    pendingPromptResult = null;
+    promptInput = null;
+  }
+
+  private android.app.AlertDialog buildDialog(android.content.Context ctx, String title, String msg) {
+    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(ctx);
+    if (title != null && title.length() > 0) b.setTitle(title);
+    if (msg != null) b.setMessage(msg);
+    b.setCancelable(false);
+    return b.create();
+  }
+
+  @Override
+  public boolean onJsAlert(WebView view, String url, String message, android.webkit.JsResult result) {
+    pendingJsResult = result;
+    android.app.AlertDialog d = buildDialog(view.getContext(), null, message);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    return true;
+  }
+
+  @Override
+  public boolean onJsConfirm(WebView view, String url, String message, android.webkit.JsResult result) {
+    pendingJsResult = result;
+    android.app.AlertDialog d = buildDialog(view.getContext(), null, message);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, "Cancel", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
+    return true;
+  }
+
+  @Override
+  public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, android.webkit.JsPromptResult result) {
+    pendingPromptResult = result;
+    android.widget.EditText input = new android.widget.EditText(view.getContext());
+    input.setText(defaultValue != null ? defaultValue : "");
+    promptInput = input;
+    android.app.AlertDialog d = buildDialog(view.getContext(), message, null);
+    d.setView(input);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, "Cancel", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
+    return true;
+  }
+}`, camFlag, micFlag, themeColorInt)
 	} else {
 		chromePermCode = `
-public class H2AChromeClient extends WebChromeClient {
+public class H2AChromeClient extends WebChromeClient implements android.content.DialogInterface.OnClickListener {
   private View customView;
   private CustomViewCallback callback;
   private FrameLayout container;
   private WebView webView;
   private WebViewActivity activity;
+  private int themeColor;
+  private android.webkit.JsResult pendingJsResult;
+  private android.webkit.JsPromptResult pendingPromptResult;
+  private android.widget.EditText promptInput;
 
-  public H2AChromeClient(FrameLayout container, WebView webView) {
+  public H2AChromeClient(FrameLayout container, WebView webView, int themeColor) {
     this.container = container;
     this.webView = webView;
     this.activity = (WebViewActivity) webView.getContext();
+    this.themeColor = themeColor;
   }
 
   @Override
@@ -780,6 +855,70 @@ public class H2AChromeClient extends WebChromeClient {
     activity.launchFileChooser(filePathCallback, accept);
     return true;
   }
+
+  @Override
+  public void onClick(android.content.DialogInterface dialog, int which) {
+    if (which == android.content.DialogInterface.BUTTON_POSITIVE) {
+      if (pendingPromptResult != null) {
+        String val = promptInput != null ? promptInput.getText().toString() : "";
+        pendingPromptResult.confirm(val);
+      } else if (pendingJsResult != null) {
+        pendingJsResult.confirm();
+      }
+    } else {
+      if (pendingPromptResult != null) pendingPromptResult.cancel();
+      else if (pendingJsResult != null) pendingJsResult.cancel();
+    }
+    pendingJsResult = null;
+    pendingPromptResult = null;
+    promptInput = null;
+  }
+
+  private android.app.AlertDialog buildDialog(android.content.Context ctx, String title, String msg) {
+    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(ctx);
+    if (title != null && title.length() > 0) b.setTitle(title);
+    if (msg != null) b.setMessage(msg);
+    b.setCancelable(false);
+    return b.create();
+  }
+
+  @Override
+  public boolean onJsAlert(WebView view, String url, String message, android.webkit.JsResult result) {
+    pendingJsResult = result;
+    android.app.AlertDialog d = buildDialog(view.getContext(), null, message);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    return true;
+  }
+
+  @Override
+  public boolean onJsConfirm(WebView view, String url, String message, android.webkit.JsResult result) {
+    pendingJsResult = result;
+    android.app.AlertDialog d = buildDialog(view.getContext(), null, message);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, "Cancel", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
+    return true;
+  }
+
+  @Override
+  public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, android.webkit.JsPromptResult result) {
+    pendingPromptResult = result;
+    android.widget.EditText input = new android.widget.EditText(view.getContext());
+    input.setText(defaultValue != null ? defaultValue : "");
+    promptInput = input;
+    android.app.AlertDialog d = buildDialog(view.getContext(), message, null);
+    d.setView(input);
+    d.setButton(android.content.DialogInterface.BUTTON_POSITIVE, "OK", this);
+    d.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, "Cancel", this);
+    d.show();
+    d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(themeColor);
+    d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
+    return true;
+  }
 }`
 	}
 	writeFile(filepath.Join(srcDir, "H2AChromeClient.java"),
@@ -788,10 +927,12 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;`+chromePermCode)
+import android.widget.FrameLayout;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.widget.EditText;`+chromePermCode)
 	indicatorField := ""
 	pullInit := ""
-	themeColorStr, themeColorInt := parseThemeColor(req)
 	flBg := themeColorStr
 	if !isURL {
 		flBg = "0xFF000000"
@@ -845,20 +986,47 @@ import android.widget.FrameLayout;`+chromePermCode)
 	}
 
 	fileChooserMethods := `
+  private String extToMime(String ext) {
+    switch (ext.toLowerCase()) {
+      case ".txt": return "text/plain";
+      case ".pdf": return "application/pdf";
+      case ".jpg": case ".jpeg": return "image/jpeg";
+      case ".png": return "image/png";
+      case ".gif": return "image/gif";
+      case ".webp": return "image/webp";
+      case ".mp4": return "video/mp4";
+      case ".mp3": return "audio/mpeg";
+      case ".json": return "application/json";
+      case ".csv": return "text/csv";
+      case ".zip": return "application/zip";
+      case ".doc": return "application/msword";
+      case ".docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      case ".xls": return "application/vnd.ms-excel";
+      case ".xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      case ".htm": case ".html": return "text/html";
+      default: return "*/*";
+    }
+  }
+
   public void launchFileChooser(android.webkit.ValueCallback<android.net.Uri[]> cb, String[] acceptTypes) {
     if (filePathCallback != null) { filePathCallback.onReceiveValue(null); }
     filePathCallback = cb;
     String mime = "*/*";
-    if (acceptTypes != null && acceptTypes.length > 0 && acceptTypes[0] != null && acceptTypes[0].trim().length() > 0) {
-      mime = acceptTypes[0].trim();
-      if (mime.indexOf(',') >= 0) mime = "*/*";
+    if (acceptTypes != null && acceptTypes.length > 0) {
+      for (String a : acceptTypes) {
+        if (a == null) continue;
+        String t = a.trim();
+        if (t.length() == 0) continue;
+        if (t.startsWith(".")) { mime = extToMime(t); break; }
+        if (t.indexOf('/') >= 0 && t.indexOf(',') < 0) { mime = t; break; }
+      }
     }
-    android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+    android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
     intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
     intent.setType(mime);
     intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true);
     try {
-      startActivityForResult(android.content.Intent.createChooser(intent, "Select"), H2A_FILE_CHOOSER_REQ);
+      startActivityForResult(intent, H2A_FILE_CHOOSER_REQ);
     } catch (Exception e) {
       if (filePathCallback != null) { filePathCallback.onReceiveValue(null); filePathCallback = null; }
     }
@@ -1117,7 +1285,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     }
     FrameLayout fl = new FrameLayout(this);
     wv.setWebViewClient(%s);
-    chromeClient = new H2AChromeClient(fl, wv);
+    chromeClient = new H2AChromeClient(fl, wv, %d);
     wv.setWebChromeClient(chromeClient);
     wv.setDownloadListener(this);
     wv.addJavascriptInterface(new ClipboardHelper(this), "H2AClip");
@@ -1203,7 +1371,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
   }%s
   %s
   %s
-}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods))
+}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods, themeColorInt))
 
 	if req.SplashEnabled {
 		duration := req.SplashDuration
@@ -1772,6 +1940,30 @@ func wrapHTML(req BuildRequest) string {
       try{H2AClip.writeText(String(t));return Promise.resolve();}catch(e){return Promise.reject(e);}
     };
   }
+})();
+(function(){
+  var _origClick=HTMLInputElement.prototype.click;
+  HTMLInputElement.prototype.click=function(){
+    if(this.type==='file'){
+      var prev=this.style.cssText;
+      var wasHidden=(this.offsetParent===null||this.style.display==='none'||this.style.visibility==='hidden'||this.getAttribute('type')==='file'&&getComputedStyle(this).display==='none');
+      if(wasHidden){
+        this.style.setProperty('position','fixed','important');
+        this.style.setProperty('top','0','important');
+        this.style.setProperty('left','0','important');
+        this.style.setProperty('width','1px','important');
+        this.style.setProperty('height','1px','important');
+        this.style.setProperty('opacity','0','important');
+        this.style.setProperty('display','block','important');
+        this.style.setProperty('visibility','visible','important');
+        this.style.setProperty('z-index','-9999','important');
+      }
+      _origClick.call(this);
+      if(wasHidden){var el=this;setTimeout(function(){el.style.cssText=prev;},500);}
+    } else {
+      _origClick.call(this);
+    }
+  };
 })();
   </script>`
 	js := ""

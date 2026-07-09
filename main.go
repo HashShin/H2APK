@@ -573,14 +573,17 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 		for name, data := range req.AssetFiles {
 			decoded, err := base64.StdEncoding.DecodeString(data)
 			if err == nil {
-				// sanitize: strip any path components to prevent traversal
-				clean := filepath.Base(name)
 				content := string(decoded)
 				// Optimize PNG images
-				if strings.HasSuffix(strings.ToLower(clean), ".png") {
+				if strings.HasSuffix(strings.ToLower(name), ".png") {
 					content = string(compressPNG(decoded))
 				}
-				writeFile(filepath.Join(assets, clean), content)
+				// Preserve folder structure for zip uploads
+				destPath := filepath.Join(assets, filepath.Clean("/"+name))
+				// Create parent directories if needed
+				destDir := filepath.Dir(destPath)
+				os.MkdirAll(destDir, 0755)
+				writeFile(destPath, content)
 			}
 		}
 	}

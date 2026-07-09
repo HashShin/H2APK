@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;700;900&family=Luckiest+Guy&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{-webkit-tap-highlight-color:transparent;outline:none;border:none;box-shadow:none;box-sizing:border-box;margin:0;padding:0}
 body{
@@ -620,7 +621,7 @@ document.addEventListener('keydown',function(e){
     <span>Select files or drop here</span>
     <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .png .jpg .svg .gif .webp</span>
   </label>
-  <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico" multiple onchange="handleFiles(this)" style="display:none">
+  <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico,.zip" multiple onchange="handleFiles(this)" style="display:none">
   <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
   <button onclick="previewUpload()" class="preview-btn" id="uploadPreviewBtn" style="display:none;margin-top:12px">Preview</button>
 </div>
@@ -775,40 +776,87 @@ function previewSplash(input){
   reader.readAsDataURL(f);
 }
 
+let fileList=[];
+
 function handleFiles(input){
   uploadedFiles={};
   uploadedImages={};
+  fileList=[];
   const fl=document.getElementById('fileList');
   if(!input.files.length){fl.innerHTML='';return}
-  let pending=input.files.length;
-  let list=[];
+  
+  let filePending=0;
+  
   for(const f of input.files){
-    const reader=new FileReader();
-    const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(f.name);
-    reader.onload=function(){
-      if(isImage){
-        uploadedImages[f.name]=reader.result.split(',')[1];
-      }else{
-        uploadedFiles[f.name]=reader.result;
-      }
-      list.push(f.name);
-      pending--;
-      if(!pending){
-        let html='';
-        for(const name of list){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
-        if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
-        fl.innerHTML=html;
-        var btn=document.getElementById('uploadPreviewBtn');
-        if(uploadedFiles['index.html']){btn.style.display='inline-block';btn.classList.add('active')}
-        else{btn.style.display='none';btn.classList.remove('active')}
-      }
-    };
-    if(isImage){
-      reader.readAsDataURL(f);
+    if(f.name.toLowerCase().endsWith('.zip')){
+      filePending++;
+      handleZipFile(f, function(){
+        filePending--;
+        if(!filePending){updateFileList();}
+      });
     }else{
-      reader.readAsText(f);
+      filePending++;
+      const reader=new FileReader();
+      const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(f.name);
+      reader.onload=function(){
+        if(isImage){
+          uploadedImages[f.name]=reader.result.split(',')[1];
+        }else{
+          uploadedFiles[f.name]=reader.result;
+        }
+        fileList.push(f.name);
+        filePending--;
+        if(!filePending){updateFileList();}
+      };
+      if(isImage){
+        reader.readAsDataURL(f);
+      }else{
+        reader.readAsText(f);
+      }
     }
   }
+}
+
+function handleZipFile(f, callback){
+  JSZip.loadAsync(f).then(function(zip){
+    const promises=[];
+    zip.forEach(function(relativePath, zipEntry){
+      if(zipEntry.dir)return;
+      promises.push(processZipEntry(zipEntry, relativePath));
+    });
+    Promise.all(promises).then(function(){
+      callback();
+    });
+  });
+}
+
+function processZipEntry(zipEntry, relativePath){
+  return new Promise(function(resolve){
+    const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(relativePath);
+    if(isImage){
+      zipEntry.async('base64').then(function(data){
+        uploadedImages[relativePath]='data:image/png;base64,'+data;
+        fileList.push(relativePath);
+        resolve();
+      });
+    }else{
+      zipEntry.async('string').then(function(data){
+        uploadedFiles[relativePath]=data;
+        fileList.push(relativePath);
+        resolve();
+      });
+    }
+  });
+}
+
+function updateFileList(){
+  let html='';
+  for(const name of fileList){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
+  if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
+  document.getElementById('fileList').innerHTML=html;
+  var btn=document.getElementById('uploadPreviewBtn');
+  if(uploadedFiles['index.html']){btn.style.display='inline-block';btn.classList.add('active')}
+  else{btn.style.display='none';btn.classList.remove('active')}
 }
 
 function switchMode(m){

@@ -19,6 +19,7 @@ tools/
 
 # Qwen
 QWEN.md
+.qwen/
 
 # Secrets
 .env
@@ -29,3 +30,4 @@ Thumbs.db
 
 # Docs
 docs/
+.qwen/

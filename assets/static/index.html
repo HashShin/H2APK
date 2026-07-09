@@ -860,7 +860,25 @@ async function build(){
   if(currentMode==='upload' && Object.keys(uploadedImages).length){
     body.asset_files=uploadedImages;
   }
-  if(document.getElementById('releaseSign').checked && keystoreBase64){
+  if(document.getElementById('releaseSign').checked){
+    if(!keystoreBase64){
+      st.className='failed';
+      st.innerHTML='<span class="pulse-dot"></span>Keystore file or base64 is required';
+      btn.disabled=false;
+      return;
+    }
+    if(!document.getElementById('ksPass').value){
+      st.className='failed';
+      st.innerHTML='<span class="pulse-dot"></span>Keystore password is required';
+      btn.disabled=false;
+      return;
+    }
+    if(!document.getElementById('keyAlias').value){
+      st.className='failed';
+      st.innerHTML='<span class="pulse-dot"></span>Key alias is required';
+      btn.disabled=false;
+      return;
+    }
     body.keystore=keystoreBase64;
     body.ks_pass=document.getElementById('ksPass').value;
     body.key_alias=document.getElementById('keyAlias').value;

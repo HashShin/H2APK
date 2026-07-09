@@ -615,15 +615,14 @@ document.addEventListener('keydown',function(e){
 
 <div class="section hidden" id="uploadSection">
   <div class="section-title">Upload Project Files</div>
-  <p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-bottom:16px">Requires <b style="color:#fff">index.html</b>. CSS, JS, and image files are optional.</p>
+  <p style="font-size:.75rem;color:rgba(255,255,255,0.45);margin-bottom:16px">Requires <b style="color:#fff">index.html</b>. Upload individual files or a <b style="color:#fff">.zip</b> with your project structure.</p>
   <label class="upload-zone" for="projectFiles">
     <span class="upload-icon">+</span>
     <span>Select files or drop here</span>
-    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .png .jpg .svg .gif .webp</span>
+    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .png .jpg .svg .gif .webp .zip</span>
   </label>
   <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico,.zip" multiple onchange="handleFiles(this)" style="display:none">
   <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
-  <button onclick="previewUpload()" class="preview-btn" id="uploadPreviewBtn" style="display:none;margin-top:12px">Preview</button>
 </div>
 
 <button class="build-btn" id="btn" onclick="build()">Build APK</button>
@@ -854,9 +853,6 @@ function updateFileList(){
   for(const name of fileList){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
   if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
   document.getElementById('fileList').innerHTML=html;
-  var btn=document.getElementById('uploadPreviewBtn');
-  if(uploadedFiles['index.html']){btn.style.display='inline-block';btn.classList.add('active')}
-  else{btn.style.display='none';btn.classList.remove('active')}
 }
 
 function switchMode(m){
@@ -905,8 +901,28 @@ async function build(){
     splash_animation: document.getElementById('splashAnimation').value,
     version: document.getElementById('version').value
   };
-  if(currentMode==='upload' && Object.keys(uploadedImages).length){
-    body.asset_files=uploadedImages;
+  if(currentMode==='upload' && (Object.keys(uploadedImages).length || Object.keys(uploadedFiles).length)){
+    body.asset_files={};
+    // Merge both uploadedFiles and uploadedImages
+    // Backend expects all asset_files values to be pure base64
+    for(var k in uploadedFiles){
+      if(uploadedFiles.hasOwnProperty(k)){
+        var l=k.toLowerCase();
+        if(l==='index.html')continue; // handled via body.html → wrapHTML
+        var data=uploadedFiles[k];
+        // readAsText stores raw text — base64-encode it (btoa+encodeURIComponent handles UTF-8)
+        body.asset_files[k]=btoa(unescape(encodeURIComponent(data)));
+      }
+    }
+    for(var k in uploadedImages){
+      if(uploadedImages.hasOwnProperty(k)){
+        var img=uploadedImages[k];
+        // strip any data: prefix (zip images are stored as 'data:image/png;base64,...')
+        if(img.indexOf(',')!==-1)img=img.split(',')[1];
+        body.asset_files[k]=img;
+      }
+    }
+    console.log('Total asset_files:', Object.keys(body.asset_files).length);
   }
   if(document.getElementById('releaseSign').checked){
     if(!keystoreBase64){
@@ -939,12 +955,16 @@ async function build(){
   }else if(currentMode==='upload'){
     if(!uploadedFiles['index.html']){st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Missing index.html';btn.disabled=false;return}
     body.html=uploadedFiles['index.html'];
-    body.css='';body.js='';
-    for(const name in uploadedFiles){
-      const l=name.toLowerCase();
-      if(l==='index.html')continue;
-      if(l.endsWith('.css'))body.css+=uploadedFiles[name]+'\n';
-      if(l.endsWith('.js'))body.js+=uploadedFiles[name]+'\n';
+    // For upload mode with folder structure, files are sent via asset_files
+    // CSS/JS concatenation only for flat structure
+    if(!body.asset_files){
+      body.css='';body.js='';
+      for(const name in uploadedFiles){
+        const l=name.toLowerCase();
+        if(l==='index.html')continue;
+        if(l.endsWith('.css'))body.css+=uploadedFiles[name]+'\n';
+        if(l.endsWith('.js'))body.js+=uploadedFiles[name]+'\n';
+      }
     }
   }else{
     body.url=document.getElementById('url').value;
@@ -1021,20 +1041,6 @@ function preview(){
   document.getElementById('previewPane').classList.add('open');
 }
 
-function previewUpload(){
-  if(!uploadedFiles['index.html'])return;
-  var h=uploadedFiles['index.html'];
-  var c='';var j='';
-  for(var name in uploadedFiles){
-    var l=name.toLowerCase();
-    if(l.endsWith('.css'))c+=uploadedFiles[name]+'\n';
-    if(l.endsWith('.js'))j+=uploadedFiles[name]+'\n';
-  }
-  var blob=new Blob(['<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><style>',c,'</style></head><body>',h,'<script>',j,'<\/script></body></html>'],{type:'text/html'});
-  var url=URL.createObjectURL(blob);
-  document.getElementById('previewFrame').src=url;
-  document.getElementById('previewPane').classList.add('open');
-}
 
 function closePreview(){
   document.getElementById('previewPane').classList.remove('open');

@@ -545,16 +545,14 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	m := fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="%s">
   <uses-permission android:name="android.permission.INTERNET"/>
-  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>`, req.PackageName)
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>`, req.PackageName)
 	if req.CameraPermission {
 		m += "\n  <uses-permission android:name=\"android.permission.CAMERA\"/>"
 	}
 	if req.MicPermission {
 		m += "\n  <uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>"
 		m += "\n  <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>"
-	}
-	if req.NotifPermission {
-		m += "\n  <uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>"
 	}
 	m += fmt.Sprintf(`
   <application android:label="%s"%s android:usesCleartextTraffic="true">
@@ -582,6 +580,11 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 			// Optimize PNG images
 			if strings.HasSuffix(strings.ToLower(name), ".png") {
 				content = string(compressPNG(decoded))
+			} else {
+				lname := strings.ToLower(name)
+				if strings.HasSuffix(lname, ".html") || strings.HasSuffix(lname, ".htm") {
+					content = injectShims(content, req)
+				}
 			}
 			// Preserve folder structure for zip uploads
 			destPath := filepath.Join(assets, filepath.Clean("/"+name))
@@ -620,7 +623,7 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
   private boolean micEnabled = %s;
   private static final int REQ_CAMERA = 1001;
   private static final int REQ_MIC = 1002;
-  private int themeColor = %d;
+  private int themeColor = (int)%dL;
   private android.webkit.JsResult pendingJsResult;
   private android.webkit.JsPromptResult pendingPromptResult;
   private android.widget.EditText promptInput;
@@ -741,7 +744,8 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
   }
 
   private android.app.AlertDialog buildDialog(android.content.Context ctx, String title, String msg) {
-    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(ctx);
+    android.view.ContextThemeWrapper themed = new android.view.ContextThemeWrapper(ctx, android.R.style.Theme_Material_Dialog);
+    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(themed);
     if (title != null && title.length() > 0) b.setTitle(title);
     if (msg != null) b.setMessage(msg);
     b.setCancelable(false);
@@ -875,7 +879,8 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
   }
 
   private android.app.AlertDialog buildDialog(android.content.Context ctx, String title, String msg) {
-    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(ctx);
+    android.view.ContextThemeWrapper themed = new android.view.ContextThemeWrapper(ctx, android.R.style.Theme_Material_Dialog);
+    android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(themed);
     if (title != null && title.length() > 0) b.setTitle(title);
     if (msg != null) b.setMessage(msg);
     b.setCancelable(false);
@@ -1101,6 +1106,137 @@ public class ClipboardHelper implements Runnable {
   }
 }`)
 
+	writeFile(filepath.Join(srcDir, "FileHelper.java"),
+		`package com.h2a;
+import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.ContentValues;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.webkit.JavascriptInterface;
+import android.widget.Toast;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import android.util.Base64;
+import java.util.concurrent.atomic.AtomicInteger;
+public class FileHelper implements Runnable {
+  private static final String CHANNEL_ID = "h2a_downloads";
+  private static final AtomicInteger notifIdCounter = new AtomicInteger(3000);
+  private Activity activity;
+  private volatile String pendingBase64;
+  private volatile String pendingFilename;
+  private volatile String pendingMime;
+  public FileHelper(Activity a) { this.activity = a; }
+  @JavascriptInterface
+  public void saveBase64File(String base64, String filename, String mimeType) {
+    pendingBase64 = base64;
+    pendingFilename = filename;
+    pendingMime = mimeType == null || mimeType.isEmpty() ? "application/octet-stream" : mimeType;
+    new Thread(this).start();
+  }
+  private NotificationManager getNotifManager() {
+    return (NotificationManager) activity.getSystemService(NotificationManager.class);
+  }
+  private void ensureChannel() {
+    if (Build.VERSION.SDK_INT >= 26) {
+      NotificationManager nm = getNotifManager();
+      if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+        NotificationChannel ch = new NotificationChannel(CHANNEL_ID, "Downloads", NotificationManager.IMPORTANCE_LOW);
+        ch.setSound(null, null);
+        nm.createNotificationChannel(ch);
+      }
+    }
+  }
+  static class ToastRunner implements Runnable {
+    private Activity activity;
+    private String msg;
+    private boolean long_;
+    ToastRunner(Activity a, String m, boolean l) { activity=a; msg=m; long_=l; }
+    public void run() {
+      Toast.makeText(activity, msg, long_ ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show();
+    }
+  }
+  public void run() {
+    final String filename = pendingFilename;
+    final String mime = pendingMime;
+    final byte[] data;
+    try {
+      data = Base64.decode(pendingBase64, Base64.DEFAULT);
+    } catch (Exception e) {
+      activity.runOnUiThread(new ToastRunner(activity, "Download failed: " + e.getMessage(), true));
+      return;
+    }
+    ensureChannel();
+    final int notifId = notifIdCounter.getAndIncrement();
+    final NotificationManager nm = getNotifManager();
+    int iconRes = activity.getResources().getIdentifier("icon", "mipmap", activity.getPackageName());
+    int dlIcon = iconRes != 0 ? iconRes : android.R.drawable.stat_sys_download;
+    int doneIcon = iconRes != 0 ? iconRes : android.R.drawable.stat_sys_download_done;
+    Notification.Builder builder;
+    if (Build.VERSION.SDK_INT >= 26) {
+      builder = new Notification.Builder(activity, CHANNEL_ID);
+    } else {
+      builder = new Notification.Builder(activity);
+    }
+    builder.setContentTitle(filename)
+           .setContentText("Downloading...")
+           .setSmallIcon(dlIcon)
+           .setOngoing(true)
+           .setProgress(100, 0, true);
+    nm.notify(notifId, builder.build());
+    try {
+      if (Build.VERSION.SDK_INT >= 29) {
+        ContentValues cv = new ContentValues();
+        cv.put(MediaStore.Downloads.DISPLAY_NAME, filename);
+        cv.put(MediaStore.Downloads.MIME_TYPE, mime);
+        cv.put(MediaStore.Downloads.IS_PENDING, 1);
+        android.net.Uri uri = activity.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+        if (uri != null) {
+          OutputStream os = activity.getContentResolver().openOutputStream(uri);
+          if (os != null) { os.write(data); os.close(); }
+          cv.clear();
+          cv.put(MediaStore.Downloads.IS_PENDING, 0);
+          activity.getContentResolver().update(uri, cv, null, null);
+        }
+      } else {
+        File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        dir.mkdirs();
+        File f = new File(dir, filename);
+        FileOutputStream fos = new FileOutputStream(f);
+        fos.write(data);
+        fos.close();
+      }
+      Notification.Builder doneBuilder;
+      if (Build.VERSION.SDK_INT >= 26) {
+        doneBuilder = new Notification.Builder(activity, CHANNEL_ID);
+      } else {
+        doneBuilder = new Notification.Builder(activity);
+      }
+      long bytes = data.length;
+      String sizeStr;
+      if (bytes >= 1048576) sizeStr = String.format("%.1f MB", bytes / 1048576.0);
+      else if (bytes >= 1024) sizeStr = String.format("%.1f KB", bytes / 1024.0);
+      else sizeStr = bytes + " B";
+      doneBuilder.setContentTitle(filename)
+                 .setContentText("Download complete · " + sizeStr)
+                 .setSmallIcon(doneIcon)
+                 .setOngoing(false)
+                 .setProgress(0, 0, false)
+                 .setAutoCancel(true);
+      if (Build.VERSION.SDK_INT >= 21) doneBuilder.setStyle(new Notification.BigTextStyle().bigText("Download complete · " + sizeStr));
+      nm.notify(notifId, doneBuilder.build());
+      activity.runOnUiThread(new ToastRunner(activity, "Saved: " + filename, false));
+    } catch (Exception e) {
+      nm.cancel(notifId);
+      activity.runOnUiThread(new ToastRunner(activity, "Save failed: " + e.getMessage(), true));
+    }
+  }
+}`)
+
 	permImports := ""
 	permSettings := ""
 	permFields := ""
@@ -1285,10 +1421,11 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     }
     FrameLayout fl = new FrameLayout(this);
     wv.setWebViewClient(%s);
-    chromeClient = new H2AChromeClient(fl, wv, %d);
+    chromeClient = new H2AChromeClient(fl, wv, (int)%dL);
     wv.setWebChromeClient(chromeClient);
     wv.setDownloadListener(this);
     wv.addJavascriptInterface(new ClipboardHelper(this), "H2AClip");
+    wv.addJavascriptInterface(new FileHelper(this), "H2AFile");
     %s
     %s
     wv.loadUrl("%s");
@@ -1359,19 +1496,43 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
 
   @Override
   public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-    DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
-    req.setMimeType(mimeType);
-    req.addRequestHeader("User-Agent", userAgent);
-    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-    String name = URLUtil.guessFileName(url, contentDisposition, mimeType);
-    req.setTitle(name);
-    req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
-    DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-    if (dm != null) dm.enqueue(req);
+    if (url != null && url.startsWith("blob:")) {
+      final String safeFilename = URLUtil.guessFileName(url, contentDisposition, mimeType).replace("'", "\\'");
+      final String safeMime = (mimeType == null ? "" : mimeType).replace("'", "\\'");
+      final String safeUrl = url.replace("\\", "\\\\").replace("'", "\\'");
+      wv.evaluateJavascript(
+        "(function(){" +
+        "fetch('" + safeUrl + "')" +
+        ".then(function(r){return r.blob();})" +
+        ".then(function(b){" +
+        "var fr=new FileReader();" +
+        "fr.onload=function(){" +
+        "var b64=fr.result.indexOf(',')>=0?fr.result.split(',')[1]:fr.result;" +
+        "var mt=b.type||'" + safeMime + "';" +
+        "if(window.H2AFile)H2AFile.saveBase64File(b64,'" + safeFilename + "',mt);" +
+        "};" +
+        "fr.readAsDataURL(b);" +
+        "}).catch(function(e){console.error('blob dl',e);});" +
+        "})()", null);
+      return;
+    }
+    try {
+      DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+      req.setMimeType(mimeType);
+      req.addRequestHeader("User-Agent", userAgent);
+      req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+      String name = URLUtil.guessFileName(url, contentDisposition, mimeType);
+      req.setTitle(name);
+      req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
+      DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+      if (dm != null) dm.enqueue(req);
+    } catch (Exception e) {
+      Toast.makeText(this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+    }
   }%s
   %s
   %s
-}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods, themeColorInt))
+}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, themeColorInt, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods))
 
 	if req.SplashEnabled {
 		duration := req.SplashDuration
@@ -1720,6 +1881,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		filepath.Join(srcDir, "WebViewActivity.java"),
 		filepath.Join(srcDir, "H2AChromeClient.java"),
 		filepath.Join(srcDir, "ClipboardHelper.java"),
+		filepath.Join(srcDir, "FileHelper.java"),
 	}
 	if req.NotifPermission {
 		javacFiles = append(javacFiles, filepath.Join(srcDir, "NotificationHelper.java"))
@@ -1890,56 +2052,53 @@ func versionName(v string) string {
 	return v
 }
 
-func wrapHTML(req BuildRequest) string {
-	css := ""
-	if req.CSS != "" {
-		css += "\n  " + req.CSS
-	}
-	css = "\n  <style>\n  body{margin:0}\n" + css + "\n  </style>"
-	notifShim := ""
-	if req.NotifPermission {
-		notifShim = `
-  <script>
-(function(){
-  if(typeof Notification!=='undefined')return;
-  if(typeof H2A==='undefined'||!H2A.showNotification)return;
-  var p=H2A.getNotificationPermission(),cbs=[];
-  window.Notification=function(t,o){
-    if(p==='granted')H2A.showNotification(t,(o&&o.body)||'');
-  };
-  Object.defineProperty(Notification,'permission',{get:function(){return p;}});
-  Notification.requestPermission=function(){
-    return new Promise(function(r){
-      if(p==='granted'){r('granted');return;}
-      cbs.push(r);H2A.requestNotificationPermission();
-      var n=0,i=setInterval(function(){
-        p=H2A.getNotificationPermission();
-        if(p==='granted'||++n>60){
-          clearInterval(i);
-          cbs.forEach(function(c){c(p==='granted'?'granted':'denied');});
-          cbs=[];
-        }
-      },500);
-    });
-  };
-})();
-  </script>`
-	}
-	clipShim := `
+func clipShimScript() string {
+	return `
   <script>
 (function(){
   if(typeof H2AClip==='undefined')return;
   if(!navigator.clipboard)navigator.clipboard={};
-  if(!navigator.clipboard.readText){
-    navigator.clipboard.readText=function(){
-      try{return Promise.resolve(H2AClip.readText());}catch(e){return Promise.reject(e);}
-    };
+  navigator.clipboard.readText=function(){
+    try{return Promise.resolve(H2AClip.readText());}catch(e){return Promise.reject(e);}
+  };
+  navigator.clipboard.writeText=function(t){
+    try{H2AClip.writeText(String(t));return Promise.resolve();}catch(e){return Promise.reject(e);}
+  };
+})();
+(function(){
+  function handleDownloadAnchor(a){
+    var href=a.href||'';
+    var filename=a.getAttribute('download')||'download';
+    if(href.startsWith('data:')){
+      var comma=href.indexOf(',');
+      if(comma<0)return false;
+      var meta=href.substring(5,comma);
+      var b64part=href.substring(comma+1);
+      var mime=meta.split(';')[0]||'application/octet-stream';
+      var b64=meta.indexOf('base64')>=0?b64part:btoa(decodeURIComponent(b64part.replace(/\+/g,' ')));
+      if(window.H2AFile){H2AFile.saveBase64File(b64,filename,mime);return true;}
+    }
+    if(href.startsWith('blob:')){
+      fetch(href).then(function(r){return r.blob();}).then(function(b){
+        var mime=b.type||'application/octet-stream';
+        var fr=new FileReader();
+        fr.onload=function(){
+          var res=fr.result;
+          var b64=res.indexOf(',')>=0?res.split(',')[1]:res;
+          if(window.H2AFile)H2AFile.saveBase64File(b64,filename,mime);
+        };
+        fr.readAsDataURL(b);
+      }).catch(function(e){console.error('blob dl',e);});
+      return true;
+    }
+    return false;
   }
-  if(!navigator.clipboard.writeText){
-    navigator.clipboard.writeText=function(t){
-      try{H2AClip.writeText(String(t));return Promise.resolve();}catch(e){return Promise.reject(e);}
-    };
-  }
+  document.addEventListener('click',function(e){
+    var el=e.target;
+    while(el&&el.tagName!=='A')el=el.parentElement;
+    if(!el||!el.hasAttribute('download'))return;
+    if(handleDownloadAnchor(el)){e.preventDefault();e.stopPropagation();}
+  },true);
 })();
 (function(){
   var _origClick=HTMLInputElement.prototype.click;
@@ -1966,6 +2125,71 @@ func wrapHTML(req BuildRequest) string {
   };
 })();
   </script>`
+}
+
+func notifShimScript() string {
+	return `
+  <script>
+(function(){
+  if(typeof Notification!=='undefined')return;
+  if(typeof H2A==='undefined'||!H2A.showNotification)return;
+  var p=H2A.getNotificationPermission(),cbs=[];
+  window.Notification=function(t,o){
+    if(p==='granted')H2A.showNotification(t,(o&&o.body)||'');
+  };
+  Object.defineProperty(Notification,'permission',{get:function(){return p;}});
+  Notification.requestPermission=function(){
+    return new Promise(function(r){
+      if(p==='granted'){r('granted');return;}
+      cbs.push(r);H2A.requestNotificationPermission();
+      var n=0,i=setInterval(function(){
+        p=H2A.getNotificationPermission();
+        if(p==='granted'||++n>60){
+          clearInterval(i);
+          cbs.forEach(function(c){c(p==='granted'?'granted':'denied');});
+          cbs=[];
+        }
+      },500);
+    });
+  };
+})();
+  </script>`
+}
+
+func shimBlocks(req BuildRequest) string {
+	s := clipShimScript()
+	if req.NotifPermission {
+		s = notifShimScript() + s
+	}
+	return s
+}
+
+func injectShims(htmlContent string, req BuildRequest) string {
+	shims := shimBlocks(req)
+	lower := strings.ToLower(htmlContent)
+	if i := strings.LastIndex(lower, "</body>"); i != -1 {
+		return htmlContent[:i] + shims + "\n" + htmlContent[i:]
+	}
+	if i := strings.LastIndex(lower, "</html>"); i != -1 {
+		return htmlContent[:i] + shims + "\n" + htmlContent[i:]
+	}
+	if i := strings.LastIndex(lower, "</head>"); i != -1 {
+		return htmlContent[:i] + shims + "\n" + htmlContent[i:]
+	}
+	return htmlContent + "\n" + shims
+}
+
+func wrapHTML(req BuildRequest) string {
+	css := ""
+	if req.CSS != "" {
+		css += "\n  " + req.CSS
+	}
+	css = "\n  <style>\n  body{margin:0}\n" + css + "\n  </style>"
+	notifShim := ""
+	if req.NotifPermission {
+		notifShim = notifShimScript()
+	}
+	clipShim := clipShimScript()
 	js := ""
 	if req.JS != "" {
 		js = "\n  <script>\n" + req.JS + "\n  </script>"

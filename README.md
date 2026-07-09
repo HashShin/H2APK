@@ -1,4 +1,4 @@
-<p align="center"><img src="https://github.com/HashShin/H2APK/blob/main/assets/images/banner.jpg" alt="H2APK Banner"></p>
+<p align="center"><img src="https://cdn.jsdelivr.net/gh/HashShin/H2APK@main/assets/images/banner.jpg" alt="H2APK Banner"></p>
 
 <p align="center"><strong>HTML → APK. One click.</strong></p>
 

@@ -570,21 +570,26 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	} else {
 		logf("Writing web assets")
 		writeFile(filepath.Join(assets, "index.html"), wrapHTML(req))
+		logf("AssetFiles count: %d", len(req.AssetFiles))
 		for name, data := range req.AssetFiles {
+			logf("Processing asset: %s", name)
 			decoded, err := base64.StdEncoding.DecodeString(data)
-			if err == nil {
-				content := string(decoded)
-				// Optimize PNG images
-				if strings.HasSuffix(strings.ToLower(name), ".png") {
-					content = string(compressPNG(decoded))
-				}
-				// Preserve folder structure for zip uploads
-				destPath := filepath.Join(assets, filepath.Clean("/"+name))
-				// Create parent directories if needed
-				destDir := filepath.Dir(destPath)
-				os.MkdirAll(destDir, 0755)
-				writeFile(destPath, content)
+			if err != nil {
+				logf("Failed to decode %s: %v", name, err)
+				continue
 			}
+			content := string(decoded)
+			// Optimize PNG images
+			if strings.HasSuffix(strings.ToLower(name), ".png") {
+				content = string(compressPNG(decoded))
+			}
+			// Preserve folder structure for zip uploads
+			destPath := filepath.Join(assets, filepath.Clean("/"+name))
+			// Create parent directories if needed
+			destDir := filepath.Dir(destPath)
+			os.MkdirAll(destDir, 0755)
+			logf("Writing %s to %s", name, destPath)
+			writeFile(destPath, content)
 		}
 	}
 
@@ -698,6 +703,18 @@ public class H2AChromeClient extends WebChromeClient {
     }
     pendingPermission = null;
   }
+
+  @Override
+  public boolean onShowFileChooser(WebView webView,
+      android.webkit.ValueCallback<android.net.Uri[]> filePathCallback,
+      WebChromeClient.FileChooserParams fileChooserParams) {
+    String[] accept = null;
+    try { accept = fileChooserParams.getAcceptTypes(); } catch (Exception e) {}
+    if (activity == null) { try { activity = (WebViewActivity) webView.getContext(); } catch (Exception e) {} }
+    if (activity == null) { filePathCallback.onReceiveValue(null); return true; }
+    activity.launchFileChooser(filePathCallback, accept);
+    return true;
+  }
 }`, camFlag, micFlag)
 	} else {
 		chromePermCode = `
@@ -706,10 +723,12 @@ public class H2AChromeClient extends WebChromeClient {
   private CustomViewCallback callback;
   private FrameLayout container;
   private WebView webView;
+  private WebViewActivity activity;
 
   public H2AChromeClient(FrameLayout container, WebView webView) {
     this.container = container;
     this.webView = webView;
+    this.activity = (WebViewActivity) webView.getContext();
   }
 
   @Override
@@ -747,6 +766,18 @@ public class H2AChromeClient extends WebChromeClient {
   public boolean dismissCustomView() {
     if (customView == null) return false;
     onHideCustomView();
+    return true;
+  }
+
+  @Override
+  public boolean onShowFileChooser(WebView webView,
+      android.webkit.ValueCallback<android.net.Uri[]> filePathCallback,
+      WebChromeClient.FileChooserParams fileChooserParams) {
+    String[] accept = null;
+    try { accept = fileChooserParams.getAcceptTypes(); } catch (Exception e) {}
+    if (activity == null) { try { activity = (WebViewActivity) webView.getContext(); } catch (Exception e) {} }
+    if (activity == null) { filePathCallback.onReceiveValue(null); return true; }
+    activity.launchFileChooser(filePathCallback, accept);
     return true;
   }
 }`
@@ -795,7 +826,8 @@ import android.widget.FrameLayout;`+chromePermCode)
 		}
 	}
 	needsPerms := req.CameraPermission || req.MicPermission
-	useAssetLoader := !isURL && needsPerms
+	// Enable asset loader for uploads with folder structure or when permissions needed
+	useAssetLoader := !isURL && (needsPerms || len(req.AssetFiles) > 0)
 	disableCopyImplements := ", android.view.View.OnLongClickListener"
 	disableCopyInit := "wv.setOnLongClickListener(this);"
 	disableCopyMethod := ""
@@ -811,6 +843,95 @@ import android.widget.FrameLayout;`+chromePermCode)
     return r != null && (r.getType() == WebView.HitTestResult.SRC_ANCHOR_TYPE || r.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE);
   }`
 	}
+
+	fileChooserMethods := `
+  public void launchFileChooser(android.webkit.ValueCallback<android.net.Uri[]> cb, String[] acceptTypes) {
+    if (filePathCallback != null) { filePathCallback.onReceiveValue(null); }
+    filePathCallback = cb;
+    String mime = "*/*";
+    if (acceptTypes != null && acceptTypes.length > 0 && acceptTypes[0] != null && acceptTypes[0].trim().length() > 0) {
+      mime = acceptTypes[0].trim();
+      if (mime.indexOf(',') >= 0) mime = "*/*";
+    }
+    android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+    intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+    intent.setType(mime);
+    intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true);
+    try {
+      startActivityForResult(android.content.Intent.createChooser(intent, "Select"), H2A_FILE_CHOOSER_REQ);
+    } catch (Exception e) {
+      if (filePathCallback != null) { filePathCallback.onReceiveValue(null); filePathCallback = null; }
+    }
+  }
+
+  @Override
+  protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode != H2A_FILE_CHOOSER_REQ) return;
+    if (filePathCallback == null) return;
+    android.net.Uri[] results = null;
+    if (resultCode == Activity.RESULT_OK && data != null) {
+      if (data.getClipData() != null) {
+        int n = data.getClipData().getItemCount();
+        results = new android.net.Uri[n];
+        for (int i = 0; i < n; i++) results[i] = data.getClipData().getItemAt(i).getUri();
+      } else if (data.getData() != null) {
+        results = new android.net.Uri[]{ data.getData() };
+      }
+    }
+    filePathCallback.onReceiveValue(results);
+    filePathCallback = null;
+  }`
+
+	writeFile(filepath.Join(srcDir, "ClipboardHelper.java"),
+		`package com.h2a;
+import android.app.Activity;
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.content.Context;
+import android.webkit.JavascriptInterface;
+public class ClipboardHelper implements Runnable {
+  private Activity activity;
+  private volatile String pendingWrite;
+  private volatile String readResult;
+  private final Object lock = new Object();
+  private volatile boolean done;
+  private int mode;
+  public ClipboardHelper(Activity a) { this.activity = a; }
+  @JavascriptInterface
+  public String readText() {
+    synchronized (lock) {
+      mode = 0; done = false; readResult = "";
+      activity.runOnUiThread(this);
+      long start = System.currentTimeMillis();
+      while (!done && System.currentTimeMillis() - start < 1000) {
+        try { lock.wait(1000); } catch (InterruptedException e) { break; }
+      }
+      return readResult;
+    }
+  }
+  @JavascriptInterface
+  public void writeText(String text) {
+    synchronized (lock) { mode = 1; pendingWrite = text == null ? "" : text; }
+    activity.runOnUiThread(this);
+  }
+  public void run() {
+    ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+    if (mode == 0) {
+      String r = "";
+      try {
+        if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip() != null
+            && cm.getPrimaryClip().getItemCount() > 0) {
+          CharSequence cs = cm.getPrimaryClip().getItemAt(0).coerceToText(activity);
+          r = cs == null ? "" : cs.toString();
+        }
+      } catch (Exception e) {}
+      synchronized (lock) { readResult = r; done = true; lock.notifyAll(); }
+    } else {
+      try { if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("text", pendingWrite)); } catch (Exception e) {}
+    }
+  }
+}`)
 
 	permImports := ""
 	permSettings := ""
@@ -928,7 +1049,7 @@ public class NotificationHelper {
 
 	assetInit := ""
 	if useAssetLoader {
-		loadURL = `https://appassets.androidplatform.net/index.html`
+		loadURL = `file:///android_asset/index.html`
 	}
 
 	writeFile(filepath.Join(srcDir, "WebViewActivity.java"),
@@ -952,12 +1073,15 @@ import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.content.res.Configuration;
-import android.util.Log;%s
+import android.util.Log;
+import android.webkit.ValueCallback;%s
 public class WebViewActivity extends Activity implements DownloadListener%s {
   private WebView wv;
   private H2AChromeClient chromeClient;
   private long lastBackPress = 0;
   private Toast toast;
+  private ValueCallback<Uri[]> filePathCallback;
+  private static final int H2A_FILE_CHOOSER_REQ = 3001;
   %s
   %s
 
@@ -996,6 +1120,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     chromeClient = new H2AChromeClient(fl, wv);
     wv.setWebChromeClient(chromeClient);
     wv.setDownloadListener(this);
+    wv.addJavascriptInterface(new ClipboardHelper(this), "H2AClip");
     %s
     %s
     wv.loadUrl("%s");
@@ -1077,7 +1202,8 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     if (dm != null) dm.enqueue(req);
   }%s
   %s
-}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods))
+  %s
+}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods))
 
 	if req.SplashEnabled {
 		duration := req.SplashDuration
@@ -1425,6 +1551,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		filepath.Join(srcDir, "PaddingClient.java"),
 		filepath.Join(srcDir, "WebViewActivity.java"),
 		filepath.Join(srcDir, "H2AChromeClient.java"),
+		filepath.Join(srcDir, "ClipboardHelper.java"),
 	}
 	if req.NotifPermission {
 		javacFiles = append(javacFiles, filepath.Join(srcDir, "NotificationHelper.java"))
@@ -1630,6 +1757,23 @@ func wrapHTML(req BuildRequest) string {
 })();
   </script>`
 	}
+	clipShim := `
+  <script>
+(function(){
+  if(typeof H2AClip==='undefined')return;
+  if(!navigator.clipboard)navigator.clipboard={};
+  if(!navigator.clipboard.readText){
+    navigator.clipboard.readText=function(){
+      try{return Promise.resolve(H2AClip.readText());}catch(e){return Promise.reject(e);}
+    };
+  }
+  if(!navigator.clipboard.writeText){
+    navigator.clipboard.writeText=function(t){
+      try{H2AClip.writeText(String(t));return Promise.resolve();}catch(e){return Promise.reject(e);}
+    };
+  }
+})();
+  </script>`
 	js := ""
 	if req.JS != "" {
 		js = "\n  <script>\n" + req.JS + "\n  </script>"
@@ -1639,12 +1783,12 @@ func wrapHTML(req BuildRequest) string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes,maximum-scale=5.0">
-  <title>%s</title>%s%s
+  <title>%s</title>%s%s%s
 </head>
 <body>
 %s%s
 </body>
-</html>`, req.AppName, css, notifShim, req.HTML, js)
+</html>`, req.AppName, css, notifShim, clipShim, req.HTML, js)
 }
 
 var pngEncoder = &png.Encoder{CompressionLevel: png.BestCompression}
@@ -1710,7 +1854,6 @@ func genPaddingClient(blockAds bool, adguardDNS bool, useAssetLoader bool) strin
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.net.Uri;
 import android.util.Log;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
@@ -1719,7 +1862,6 @@ public class PaddingClient extends WebViewClient {
     void onPageFinished();
   }
   private PullCallback callback;
-  private static final String SECURE_HOST = "appassets.androidplatform.net";
   public PaddingClient() { this.callback = null; }
   public PaddingClient(PullCallback cb) { this.callback = cb; }
   @Override
@@ -1745,14 +1887,25 @@ public class PaddingClient extends WebViewClient {
   }
   private WebResourceResponse serveAsset(WebView view, String url) {
     try {
-      android.net.Uri uri = android.net.Uri.parse(url);
-      if (SECURE_HOST.equals(uri.getHost())) {
-        String path = uri.getPath();
-        if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
-        if (path.startsWith("/")) path = path.substring(1);
-        InputStream is = view.getContext().getAssets().open(path);
-        return new WebResourceResponse(guessMime(path), null, is);
+      if (!url.startsWith("file:///android_asset/")) return null;
+      String path = url.substring("file:///android_asset/".length());
+      if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
+      if (path.startsWith("/")) path = path.substring(1);
+      // Handle directory requests - append index.html
+      if (path.endsWith("/")) {
+        path = path + "index.html";
+      } else {
+        // Try to open as-is first, if fails try as directory
+        try {
+          InputStream test = view.getContext().getAssets().open(path);
+          test.close();
+        } catch (Exception e) {
+          // File not found, try as directory
+          path = path + "/index.html";
+        }
       }
+      InputStream is = view.getContext().getAssets().open(path);
+      return new WebResourceResponse(guessMime(path), null, is);
     } catch (Exception e) {}
     return null;
   }
@@ -1803,7 +1956,6 @@ public class PaddingClient extends WebViewClient {
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.net.Uri;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.HashSet;
@@ -1944,14 +2096,25 @@ public class PaddingClient extends WebViewClient {
   }
   private WebResourceResponse serveAsset(WebView view, String url) {
     try {
-      Uri uri = Uri.parse(url);
-      if ("appassets.androidplatform.net".equals(uri.getHost())) {
-        String path = uri.getPath();
-        if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
-        if (path.startsWith("/")) path = path.substring(1);
-        InputStream is = view.getContext().getAssets().open(path);
-        return new WebResourceResponse(guessMime(path), null, is);
+      if (!url.startsWith("file:///android_asset/")) return null;
+      String path = url.substring("file:///android_asset/".length());
+      if (path == null || path.isEmpty() || "/".equals(path)) path = "/index.html";
+      if (path.startsWith("/")) path = path.substring(1);
+      // Handle directory requests - append index.html
+      if (path.endsWith("/")) {
+        path = path + "index.html";
+      } else {
+        // Try to open as-is first, if fails try as directory
+        try {
+          InputStream test = view.getContext().getAssets().open(path);
+          test.close();
+        } catch (Exception e) {
+          // File not found, try as directory
+          path = path + "/index.html";
+        }
       }
+      InputStream is = view.getContext().getAssets().open(path);
+      return new WebResourceResponse(guessMime(path), null, is);
     } catch (Exception e) {}
     return null;
   }

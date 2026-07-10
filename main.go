@@ -1674,7 +1674,7 @@ public class PullIndicator extends View {
 
   public void setPullProgress(float p) {
     progress = Math.min(p, 1f);
-    setAlpha(progress);
+    setAlpha(0.4f + 0.6f * progress);
     setScaleX(0.6f + 0.4f * progress);
     setScaleY(0.6f + 0.4f * progress);
     invalidate();
@@ -1793,7 +1793,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
     this.indicator = indicator;
     float d = indicator.getContext().getResources().getDisplayMetrics().density;
     this.indicatorH = 56 * d;
-    this.threshold = 56 * d;
+    this.threshold = 115 * d;
     this.maxSlide = indicatorH * 2;
     this.handler = new Handler(Looper.getMainLooper());
     this.forceHide = this;

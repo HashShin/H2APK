@@ -1018,6 +1018,10 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
       pendingGeoOrigin = null;
     }
   }
+
+  public void onPermissionResult(int requestCode, boolean granted) {
+    // Stub: camera/mic permissions not requested in this build
+  }
 }`
 	}
 	writeFile(filepath.Join(srcDir, "H2AChromeClient.java"),
@@ -1032,10 +1036,8 @@ import android.content.DialogInterface;
 import android.widget.EditText;`+chromePermCode)
 	indicatorField := ""
 	pullInit := ""
+	// Use theme color for both status bar and app background
 	flBg := themeColorStr
-	if !isURL {
-		flBg = "0xFF000000"
-	}
 	blockFlag := "false"
 	if req.BlockAds || req.AdGuardDNS { blockFlag = "true" }
 	if req.PullRefresh {
@@ -1336,18 +1338,17 @@ public class FileHelper implements Runnable {
 	permFields := ""
 	permOnCreate := ""
 	permMethods := ""
-	if needsPerms {
-		permImports = "\nimport android.Manifest;\nimport android.content.pm.PackageManager;"
-		permSettings = "ws.setMediaPlaybackRequiresUserGesture(false);"
-		permFields = ""
-		// asset serving is handled entirely in PaddingClient.shouldInterceptRequest
-		permMethods = `
+	// Always include permission handling since H2AChromeClient always has geolocation code
+	permImports = "\nimport android.Manifest;\nimport android.content.pm.PackageManager;"
+	permMethods = `
   @Override
   public void onRequestPermissionsResult(int requestCode, String[] perms, int[] grantResults) {
     boolean g = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
     if (requestCode == 1003) {
       if (chromeClient != null) chromeClient.onGeoPermissionResult(g);
-    } else {
+    } else if (requestCode == 1001) {
+      if (chromeClient != null) chromeClient.onPermissionResult(requestCode, g);
+    } else if (requestCode == 1002) {
       if (chromeClient != null) chromeClient.onPermissionResult(requestCode, g);
     }
   }
@@ -1355,23 +1356,18 @@ public class FileHelper implements Runnable {
   public void reRequestPermission(String perm, int code) {
     requestPermissions(new String[]{perm}, code);
   }`
+	if needsPerms {
+		permSettings = "ws.setMediaPlaybackRequiresUserGesture(false);"
+		permFields = ""
+		// asset serving is handled entirely in PaddingClient.shouldInterceptRequest
 	}
 	if req.NotifPermission {
-		if permImports == "" {
-			permImports = "\nimport android.Manifest;\nimport android.content.pm.PackageManager;"
-		}
 		permOnCreate += `
     if (android.os.Build.VERSION.SDK_INT >= 33) {
       if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
         requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 2001);
       }
     }`
-		if permMethods == "" {
-			permMethods = `
-  @Override
-  public void onRequestPermissionsResult(int requestCode, String[] perms, int[] grantResults) {
-  }`
-		}
 	}
 
 	notifInterface := ""
@@ -2442,7 +2438,7 @@ func wrapHTML(req BuildRequest) string {
 	if req.CSS != "" {
 		css += "\n  " + req.CSS
 	}
-	css = "\n  <style>\n  body{margin:0}\n" + css + "\n  </style>"
+	css = "\n  <style>\n  body{margin:0;color:#ffffff}\n" + css + "\n  </style>"
 	notifShim := ""
 	if req.NotifPermission {
 		notifShim = notifShimScript()

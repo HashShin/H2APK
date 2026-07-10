@@ -86,6 +86,7 @@ type BuildRequest struct {
 	CameraPermission  bool   `json:"-"`
 	MicPermission     bool   `json:"-"`
 	NotifPermission   bool   `json:"-"`
+	GeoPermission     bool   `json:"-"`
 	KeystoreBase64    string `json:"keystore"`
 	KeystorePass      string `json:"ks_pass"`
 	KeyAlias          string `json:"key_alias"`
@@ -328,6 +329,7 @@ func handleBuild(w http.ResponseWriter, r *http.Request) {
 		req.CameraPermission = true
 		req.MicPermission = true
 		req.NotifPermission = true
+		req.GeoPermission = true
 	} else {
 		content := strings.ToLower(req.HTML + req.CSS + req.JS)
 		for _, data := range req.AssetFiles {
@@ -344,8 +346,11 @@ func handleBuild(w http.ResponseWriter, r *http.Request) {
 			strings.Contains(content, "h2a.shownotification") ||
 			strings.Contains(content, "h2a.requestnotificationpermission") ||
 			strings.Contains(content, "h2a.getnotificationpermission")
+		req.GeoPermission = strings.Contains(content, "navigator.geolocation") ||
+			strings.Contains(content, "getcurrentposition") ||
+			strings.Contains(content, "watchposition")
 	}
-	log.Printf("Auto-detect: camera=%t mic=%t notif=%t isURL=%t", req.CameraPermission, req.MicPermission, req.NotifPermission, isURL)
+	log.Printf("Auto-detect: camera=%t mic=%t notif=%t geo=%t isURL=%t", req.CameraPermission, req.MicPermission, req.NotifPermission, req.GeoPermission, isURL)
 	go doBuild(id, req, isURL)
 	writeJSON(w, 202, BuildInfo{Success: true, BuildID: id})
 }
@@ -518,6 +523,43 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 		}
 	}
 
+	// 1c. styles.xml — sets windowBackground to eliminate white starting-window flash
+	{
+		windowBgXml := "#FF000000"
+		if isURL {
+			hex := req.ThemeColor
+			if hex == "" {
+				hex = "#1C1C1E"
+			}
+			if len(hex) > 0 && hex[0] == '#' {
+				hex = hex[1:]
+			}
+			if len(hex) == 6 {
+				windowBgXml = "#FF" + hex
+			} else if len(hex) == 8 {
+				windowBgXml = "#" + hex
+			}
+		}
+		valuesDir := filepath.Join(proj, "res", "values")
+		os.MkdirAll(valuesDir, 0755)
+		os.MkdirAll(flatDir, 0755)
+		stylesPath := filepath.Join(valuesDir, "styles.xml")
+		stylesXml := `<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="AppTheme" parent="@android:style/Theme.NoTitleBar">
+    <item name="android:windowBackground">` + windowBgXml + `</item>
+    <item name="android:windowNoTitle">true</item>
+  </style>
+</resources>`
+		os.WriteFile(stylesPath, []byte(stylesXml), 0644)
+		out, err := exec.Command("aapt2", "compile", "-o", flatDir, stylesPath).CombinedOutput()
+		logf("[aapt2 compile styles] %s", string(out))
+		if err == nil {
+			sf, _ := filepath.Glob(flatDir + "/values_styles.arsc.flat")
+			flatFiles = append(flatFiles, sf...)
+		}
+	}
+
 	// 2. manifest
 	logf("Writing AndroidManifest.xml")
 	iconAttr := ""
@@ -526,16 +568,16 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	}
 	var splashActivity string
 	if req.SplashEnabled {
-		splashActivity = `    <activity android:name="com.h2a.SplashActivity" android:exported="true" android:theme="@android:style/Theme.NoTitleBar">
+		splashActivity = `    <activity android:name="com.h2a.SplashActivity" android:exported="true" android:theme="@style/AppTheme">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity>
-    <activity android:name="com.h2a.WebViewActivity" android:exported="false" android:theme="@android:style/Theme.NoTitleBar" android:configChanges="orientation|screenSize">
+    <activity android:name="com.h2a.WebViewActivity" android:exported="false" android:theme="@style/AppTheme" android:configChanges="orientation|screenSize">
     </activity>`
 	} else {
-		splashActivity = `    <activity android:name="com.h2a.WebViewActivity" android:exported="true" android:theme="@android:style/Theme.NoTitleBar" android:configChanges="orientation|screenSize">
+		splashActivity = `    <activity android:name="com.h2a.WebViewActivity" android:exported="true" android:theme="@style/AppTheme" android:configChanges="orientation|screenSize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
@@ -553,6 +595,10 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	if req.MicPermission {
 		m += "\n  <uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>"
 		m += "\n  <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>"
+	}
+	if req.GeoPermission {
+		m += "\n  <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>"
+		m += "\n  <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>"
 	}
 	m += fmt.Sprintf(`
   <application android:label="%s"%s android:usesCleartextTraffic="true">
@@ -623,7 +669,10 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
   private boolean micEnabled = %s;
   private static final int REQ_CAMERA = 1001;
   private static final int REQ_MIC = 1002;
+  private static final int REQ_GEO = 1003;
   private int themeColor = (int)%dL;
+  private String pendingGeoOrigin;
+  private android.webkit.GeolocationPermissions.Callback pendingGeoCallback;
   private android.webkit.JsResult pendingJsResult;
   private android.webkit.JsPromptResult pendingPromptResult;
   private android.widget.EditText promptInput;
@@ -789,6 +838,27 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
     d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
     return true;
   }
+
+  @Override
+  public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+    if (android.os.Build.VERSION.SDK_INT >= 23 &&
+        activity.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+          != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      pendingGeoOrigin = origin;
+      pendingGeoCallback = callback;
+      activity.reRequestPermission(android.Manifest.permission.ACCESS_FINE_LOCATION, REQ_GEO);
+    } else {
+      callback.invoke(origin, true, false);
+    }
+  }
+
+  public void onGeoPermissionResult(boolean granted) {
+    if (pendingGeoCallback != null) {
+      pendingGeoCallback.invoke(pendingGeoOrigin, granted, false);
+      pendingGeoCallback = null;
+      pendingGeoOrigin = null;
+    }
+  }
 }`, camFlag, micFlag, themeColorInt)
 	} else {
 		chromePermCode = `
@@ -802,6 +872,9 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
   private android.webkit.JsResult pendingJsResult;
   private android.webkit.JsPromptResult pendingPromptResult;
   private android.widget.EditText promptInput;
+  private static final int REQ_GEO = 1003;
+  private String pendingGeoOrigin;
+  private android.webkit.GeolocationPermissions.Callback pendingGeoCallback;
 
   public H2AChromeClient(FrameLayout container, WebView webView, int themeColor) {
     this.container = container;
@@ -924,6 +997,27 @@ public class H2AChromeClient extends WebChromeClient implements android.content.
     d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(themeColor);
     return true;
   }
+
+  @Override
+  public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+    if (android.os.Build.VERSION.SDK_INT >= 23 &&
+        activity.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+          != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+      pendingGeoOrigin = origin;
+      pendingGeoCallback = callback;
+      activity.reRequestPermission(android.Manifest.permission.ACCESS_FINE_LOCATION, REQ_GEO);
+    } else {
+      callback.invoke(origin, true, false);
+    }
+  }
+
+  public void onGeoPermissionResult(boolean granted) {
+    if (pendingGeoCallback != null) {
+      pendingGeoCallback.invoke(pendingGeoOrigin, granted, false);
+      pendingGeoCallback = null;
+      pendingGeoOrigin = null;
+    }
+  }
 }`
 	}
 	writeFile(filepath.Join(srcDir, "H2AChromeClient.java"),
@@ -971,7 +1065,7 @@ import android.widget.EditText;`+chromePermCode)
 			clientCreate = "new PaddingClient(true)"
 		}
 	}
-	needsPerms := req.CameraPermission || req.MicPermission
+	needsPerms := req.CameraPermission || req.MicPermission || req.GeoPermission
 	// Enable asset loader for uploads with folder structure or when permissions needed
 	useAssetLoader := !isURL && (needsPerms || len(req.AssetFiles) > 0)
 	disableCopyImplements := ", android.view.View.OnLongClickListener"
@@ -1174,8 +1268,6 @@ public class FileHelper implements Runnable {
     final int notifId = notifIdCounter.getAndIncrement();
     final NotificationManager nm = getNotifManager();
     int iconRes = activity.getResources().getIdentifier("icon", "mipmap", activity.getPackageName());
-    int dlIcon = iconRes != 0 ? iconRes : android.R.drawable.stat_sys_download;
-    int doneIcon = iconRes != 0 ? iconRes : android.R.drawable.stat_sys_download_done;
     Notification.Builder builder;
     if (Build.VERSION.SDK_INT >= 26) {
       builder = new Notification.Builder(activity, CHANNEL_ID);
@@ -1184,9 +1276,10 @@ public class FileHelper implements Runnable {
     }
     builder.setContentTitle(filename)
            .setContentText("Downloading...")
-           .setSmallIcon(dlIcon)
+           .setSmallIcon(android.R.drawable.stat_sys_download)
            .setOngoing(true)
            .setProgress(100, 0, true);
+    if (iconRes != 0) builder.setLargeIcon(android.graphics.BitmapFactory.decodeResource(activity.getResources(), iconRes));
     nm.notify(notifId, builder.build());
     try {
       if (Build.VERSION.SDK_INT >= 29) {
@@ -1223,10 +1316,11 @@ public class FileHelper implements Runnable {
       else sizeStr = bytes + " B";
       doneBuilder.setContentTitle(filename)
                  .setContentText("Download complete · " + sizeStr)
-                 .setSmallIcon(doneIcon)
+                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                  .setOngoing(false)
                  .setProgress(0, 0, false)
                  .setAutoCancel(true);
+      if (iconRes != 0) doneBuilder.setLargeIcon(android.graphics.BitmapFactory.decodeResource(activity.getResources(), iconRes));
       if (Build.VERSION.SDK_INT >= 21) doneBuilder.setStyle(new Notification.BigTextStyle().bigText("Download complete · " + sizeStr));
       nm.notify(notifId, doneBuilder.build());
       activity.runOnUiThread(new ToastRunner(activity, "Saved: " + filename, false));
@@ -1251,7 +1345,11 @@ public class FileHelper implements Runnable {
   @Override
   public void onRequestPermissionsResult(int requestCode, String[] perms, int[] grantResults) {
     boolean g = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-    if (chromeClient != null) chromeClient.onPermissionResult(requestCode, g);
+    if (requestCode == 1003) {
+      if (chromeClient != null) chromeClient.onGeoPermissionResult(g);
+    } else {
+      if (chromeClient != null) chromeClient.onPermissionResult(requestCode, g);
+    }
   }
 
   public void reRequestPermission(String perm, int code) {
@@ -1351,6 +1449,30 @@ public class NotificationHelper {
 }`)
 	}
 
+	writeFile(filepath.Join(srcDir, "ShareHelper.java"),
+		`package com.h2a;
+import android.app.Activity;
+import android.webkit.JavascriptInterface;
+
+public class ShareHelper {
+  private Activity activity;
+  public ShareHelper(Activity a){ this.activity = a; }
+
+  @JavascriptInterface
+  public void share(String title, String text, String url) {
+    StringBuilder sb = new StringBuilder();
+    if (text != null && text.length() > 0) sb.append(text);
+    if (url != null && url.length() > 0) { if (sb.length()>0) sb.append("\n"); sb.append(url); }
+    android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_SEND);
+    i.setType("text/plain");
+    if (title != null && title.length() > 0) i.putExtra(android.content.Intent.EXTRA_SUBJECT, title);
+    i.putExtra(android.content.Intent.EXTRA_TEXT, sb.toString());
+    android.content.Intent chooser = android.content.Intent.createChooser(i, title != null ? title : "Share");
+    chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+    activity.startActivity(chooser);
+  }
+}`)
+
 	assetInit := ""
 	if useAssetLoader {
 		loadURL = `file:///android_asset/index.html`
@@ -1392,16 +1514,20 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    getWindow().getDecorView().setBackgroundColor(%s);
     try { WebView.setWebContentsDebuggingEnabled(true); } catch (Exception ignored) {}
     if (android.os.Build.VERSION.SDK_INT >= 21) {
       getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+      getWindow().setStatusBarColor((int)%dL);
     }
     wv = new WebView(this);
+    wv.setBackgroundColor(%s);
     wv.setVerticalScrollBarEnabled(%t);
     wv.setHorizontalScrollBarEnabled(%t);
     WebSettings ws = wv.getSettings();
     ws.setJavaScriptEnabled(true);
     ws.setDomStorageEnabled(true);
+    ws.setGeolocationEnabled(%t);
     ws.setSupportMultipleWindows(false);
     %s
     if (%t) {
@@ -1417,7 +1543,6 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     if (%t || %t) {
       android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false);
       ws.setSavePassword(false);
-      ws.setGeolocationEnabled(false);
     }
     FrameLayout fl = new FrameLayout(this);
     wv.setWebViewClient(%s);
@@ -1426,6 +1551,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     wv.setDownloadListener(this);
     wv.addJavascriptInterface(new ClipboardHelper(this), "H2AClip");
     wv.addJavascriptInterface(new FileHelper(this), "H2AFile");
+    wv.addJavascriptInterface(new ShareHelper(this), "H2AShare");
     %s
     %s
     wv.loadUrl("%s");
@@ -1532,7 +1658,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
   }%s
   %s
   %s
-}`, permImports, disableCopyImplements, indicatorField, permFields, !req.HideScrollbars, !req.HideScrollbars, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, themeColorInt, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods))
+}`, permImports, disableCopyImplements, indicatorField, permFields, flBg, themeColorInt, flBg, !req.HideScrollbars, !req.HideScrollbars, req.GeoPermission, permSettings, req.ZoomEnabled, req.BlockAds || req.AdGuardDNS, req.BlockAds || req.AdGuardDNS, clientCreate, themeColorInt, notifInterface, assetInit, loadURL, flBg, pullInit, permOnCreate, disableCopyInit, disableCopyMethod, permMethods, fileChooserMethods))
 
 	if req.SplashEnabled {
 		duration := req.SplashDuration
@@ -1587,6 +1713,11 @@ public class SplashActivity extends Activity implements Runnable {
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    try {
+      getWindow().getDecorView().setBackgroundColor(Color.parseColor("%s"));
+    } catch (Exception e) {
+      getWindow().getDecorView().setBackgroundColor(0xFF000000);
+    }
     RelativeLayout layout = new RelativeLayout(this);
     try {
       layout.setBackgroundColor(Color.parseColor("%s"));
@@ -1613,7 +1744,7 @@ public class SplashActivity extends Activity implements Runnable {
     %s
     finish();
   }
-}`, animImports, bgColor, imgPct, animCode, duration, exitAnim))
+}`, animImports, bgColor, bgColor, imgPct, animCode, duration, exitAnim))
 	}
 
 	if req.PullRefresh {
@@ -1882,6 +2013,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		filepath.Join(srcDir, "H2AChromeClient.java"),
 		filepath.Join(srcDir, "ClipboardHelper.java"),
 		filepath.Join(srcDir, "FileHelper.java"),
+		filepath.Join(srcDir, "ShareHelper.java"),
 	}
 	if req.NotifPermission {
 		javacFiles = append(javacFiles, filepath.Join(srcDir, "NotificationHelper.java"))
@@ -1924,6 +2056,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		"--version-name", versionName(req.VersionCode),
 		"--min-sdk-version", "21",
 		"--target-sdk-version", "34",
+		"--auto-add-overlay",
 		"-o", unsigned,
 	}
 	for _, f := range flatFiles {
@@ -2156,11 +2289,48 @@ func notifShimScript() string {
   </script>`
 }
 
+func shareShimScript() string {
+	return `
+  <script>
+(function(){
+  if(navigator.share)return;
+  if(typeof H2AShare==='undefined')return;
+  navigator.share=function(d){
+    d=d||{};
+    return new Promise(function(res){
+      H2AShare.share(d.title||'',d.text||'',d.url||'');
+      res();
+    });
+  };
+  navigator.canShare=function(d){ return !(d&&d.files&&d.files.length); };
+})();
+  </script>`
+}
+
+func speechShimScript() string {
+	return `
+  <script>
+(function(){
+  if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
+  var s=window.speechSynthesis,origSpeak=s.speak.bind(s);
+  s.speak=function(u){
+    if(s.getVoices().length===0){
+      var done=false;
+      var fire=function(){ if(done)return; done=true; origSpeak(u); };
+      s.addEventListener('voiceschanged',fire,{once:true});
+      setTimeout(fire,250);
+    } else { origSpeak(u); }
+  };
+})();
+  </script>`
+}
+
 func shimBlocks(req BuildRequest) string {
 	s := clipShimScript()
 	if req.NotifPermission {
 		s = notifShimScript() + s
 	}
+	s = shareShimScript() + speechShimScript() + s
 	return s
 }
 
@@ -2190,6 +2360,8 @@ func wrapHTML(req BuildRequest) string {
 		notifShim = notifShimScript()
 	}
 	clipShim := clipShimScript()
+	shareShim := shareShimScript()
+	speechShim := speechShimScript()
 	js := ""
 	if req.JS != "" {
 		js = "\n  <script>\n" + req.JS + "\n  </script>"
@@ -2199,12 +2371,12 @@ func wrapHTML(req BuildRequest) string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes,maximum-scale=5.0">
-  <title>%s</title>%s%s%s
+  <title>%s</title>%s%s%s%s%s
 </head>
 <body>
 %s%s
 </body>
-</html>`, req.AppName, css, notifShim, clipShim, req.HTML, js)
+</html>`, req.AppName, css, notifShim, shareShim, speechShim, clipShim, req.HTML, js)
 }
 
 var pngEncoder = &png.Encoder{CompressionLevel: png.BestCompression}

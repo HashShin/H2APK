@@ -1449,6 +1449,57 @@ public class NotificationHelper {
 }`)
 	}
 
+	writeFile(filepath.Join(srcDir, "TTSHelper.java"),
+		`package com.h2a;
+import android.app.Activity;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+import android.webkit.JavascriptInterface;
+import java.util.HashMap;
+import java.util.Locale;
+
+public class TTSHelper implements TextToSpeech.OnInitListener {
+  private Activity activity;
+  private TextToSpeech tts;
+  private boolean ready = false;
+  private String pendingText = null;
+
+  public TTSHelper(Activity a) {
+    this.activity = a;
+    tts = new TextToSpeech(a, this);
+  }
+
+  @Override
+  public void onInit(int status) {
+    if (status == TextToSpeech.SUCCESS) {
+      tts.setLanguage(Locale.getDefault());
+      ready = true;
+      if (pendingText != null) { doSpeak(pendingText); pendingText = null; }
+    }
+  }
+
+  @JavascriptInterface
+  public void speak(String text) {
+    if (ready) { doSpeak(text); } else { pendingText = text; }
+  }
+
+  @JavascriptInterface
+  public boolean isReady() { return ready; }
+
+  @JavascriptInterface
+  public void stop() { if (tts != null) tts.stop(); }
+
+  private void doSpeak(String text) {
+    if (android.os.Build.VERSION.SDK_INT >= 21) {
+      tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "h2a_" + System.currentTimeMillis());
+    } else {
+      HashMap<String,String> params = new HashMap<>();
+      params.put(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "h2a");
+      tts.speak(text, TextToSpeech.QUEUE_FLUSH, params);
+    }
+  }
+}`)
+
 	writeFile(filepath.Join(srcDir, "ShareHelper.java"),
 		`package com.h2a;
 import android.app.Activity;
@@ -1552,6 +1603,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     wv.addJavascriptInterface(new ClipboardHelper(this), "H2AClip");
     wv.addJavascriptInterface(new FileHelper(this), "H2AFile");
     wv.addJavascriptInterface(new ShareHelper(this), "H2AShare");
+    wv.addJavascriptInterface(new TTSHelper(this), "H2ATTS");
     %s
     %s
     wv.loadUrl("%s");
@@ -2014,6 +2066,7 @@ public class PullListener implements View.OnTouchListener, PaddingClient.PullCal
 		filepath.Join(srcDir, "ClipboardHelper.java"),
 		filepath.Join(srcDir, "FileHelper.java"),
 		filepath.Join(srcDir, "ShareHelper.java"),
+		filepath.Join(srcDir, "TTSHelper.java"),
 	}
 	if req.NotifPermission {
 		javacFiles = append(javacFiles, filepath.Join(srcDir, "NotificationHelper.java"))
@@ -2311,16 +2364,51 @@ func speechShimScript() string {
 	return `
   <script>
 (function(){
-  if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)return;
-  var s=window.speechSynthesis,origSpeak=s.speak.bind(s);
-  s.speak=function(u){
-    if(s.getVoices().length===0){
-      var done=false;
-      var fire=function(){ if(done)return; done=true; origSpeak(u); };
-      s.addEventListener('voiceschanged',fire,{once:true});
-      setTimeout(fire,250);
-    } else { origSpeak(u); }
+  if(window.speechSynthesis&&window.SpeechSynthesisUtterance){
+    // Native API present — patch speak() to retry after voices load
+    var s=window.speechSynthesis,origSpeak=s.speak.bind(s);
+    s.speak=function(u){
+      if(s.getVoices().length===0){
+        var done=false;
+        var fire=function(){ if(done)return; done=true; origSpeak(u); };
+        s.addEventListener('voiceschanged',fire,{once:true});
+        setTimeout(fire,250);
+      } else { origSpeak(u); }
+    };
+    return;
+  }
+  // Native API absent — polyfill via Android TTS bridge
+  if(typeof H2ATTS==='undefined')return;
+  var fakeVoice={name:'Android TTS',lang:navigator.language||'en',localService:true,default:true,voiceURI:'android'};
+  window.SpeechSynthesisUtterance=function(text){
+    this.text=text||'';
+    this.lang=navigator.language||'en';
+    this.rate=1;this.pitch=1;this.volume=1;
+    this.voice=fakeVoice;
+    this.onstart=null;this.onend=null;this.onerror=null;
   };
+  window.speechSynthesis={
+    speaking:false,paused:false,pending:false,
+    getVoices:function(){ return [fakeVoice]; },
+    speak:function(u){
+      this.speaking=true;
+      if(u.onstart) try{u.onstart({});}catch(e){}
+      H2ATTS.speak(u.text||'');
+      var self=this;
+      setTimeout(function(){
+        self.speaking=false;
+        if(u.onend) try{u.onend({});}catch(e){}
+      }, Math.max(500, (u.text||'').length*60));
+    },
+    cancel:function(){ H2ATTS.stop(); this.speaking=false; },
+    pause:function(){},
+    resume:function(){}
+  };
+  // Fire voiceschanged so callers waiting on it unblock
+  setTimeout(function(){
+    var e=new Event('voiceschanged');
+    window.speechSynthesis.dispatchEvent&&window.speechSynthesis.dispatchEvent(e);
+  },100);
 })();
   </script>`
 }

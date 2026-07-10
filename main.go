@@ -650,7 +650,7 @@ func doBuild(id string, req BuildRequest, isURL bool) {
 	// (moved later — see below before writeFile WebViewActivity)
 	themeColorStr, themeColorInt := parseThemeColor(req)
 	chromePermCode := ""
-	if req.CameraPermission || req.MicPermission {
+	if req.CameraPermission || req.MicPermission || req.GeoPermission {
 		camFlag := "false"
 		if req.CameraPermission { camFlag = "true" }
 		micFlag := "false"

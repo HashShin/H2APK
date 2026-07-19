@@ -26,7 +26,7 @@ go build -o h2apk main.go
 ./h2apk
 ```
 
-Open `http://localhost:8080`.
+H2APK automatically opens `http://localhost:8011` in your browser after startup.
 
 `setup.sh` handles all dependencies. The server checks for missing tools on startup.
 

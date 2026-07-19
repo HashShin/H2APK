@@ -124,8 +124,14 @@ input[type=url]{font-family:"Geist Mono","Geist Mono Fallback",ui-monospace,"SF 
 .upload-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:2px dashed rgba(255,255,255,0.12);border-radius:10px;padding:32px;cursor:pointer;transition:border-color .25s;text-align:center;color:rgba(255,255,255,0.45);font-size:.75rem}
 .upload-zone:hover{border-color:rgba(255,255,255,0.3)}
 .upload-icon{font-size:1.5rem;color:rgba(255,255,255,0.2)}
-#fileList span{display:block;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
-#fileList span.missing{color:#ff5f57}
+#fileList{display:flex;flex-direction:column;gap:6px}
+.file-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 0 0 12px;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.06);border-radius:9px}
+.file-info{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;flex:1}
+.file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(255,255,255,0.68)}
+.file-size{flex-shrink:0;color:rgba(255,255,255,0.3);font-size:.65rem}
+.file-remove{width:44px;height:44px;flex-shrink:0;border:0;border-left:1px solid rgba(255,255,255,0.05);background:transparent;color:rgba(255,255,255,0.3);font-size:1.1rem;cursor:pointer;border-radius:0 9px 9px 0;transition:background .2s,color .2s}
+.file-remove:hover,.file-remove:focus-visible{background:rgba(255,95,87,0.1);color:#ff5f57;outline:none}
+#fileList .missing{display:block;padding:5px 2px;color:#ff5f57}
 .pulse-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .done .pulse-dot{background:#28c840;animation:pulse 2s infinite}
 .building .pulse-dot{background:#7c5cff;animation:pulse 1.2s infinite}
@@ -619,9 +625,9 @@ document.addEventListener('keydown',function(e){
   <label class="upload-zone" for="projectFiles">
     <span class="upload-icon">+</span>
     <span>Select files or drop here</span>
-    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .png .jpg .svg .gif .webp .zip</span>
+    <span style="color:rgba(255,255,255,0.3);font-size:.65rem">.html .css .js .json .txt images .zip</span>
   </label>
-  <input type="file" id="projectFiles" accept=".html,.css,.js,.png,.jpg,.jpeg,.gif,.svg,.webp,.ico,.zip" multiple onchange="handleFiles(this)" style="display:none">
+  <input type="file" id="projectFiles" accept="text/html,text/css,text/javascript,application/javascript,application/json,text/json,text/plain,image/*,application/zip,.html,.htm,.css,.js,.mjs,.json,.txt,.xml,.csv,.png,.jpg,.jpeg,.gif,.svg,.webp,.bmp,.avif,.ico,.zip" multiple onchange="handleFiles(this)" style="display:none">
   <div id="fileList" style="margin-top:12px;font-size:.75rem;color:rgba(255,255,255,0.45)"></div>
 </div>
 
@@ -796,14 +802,14 @@ function handleFiles(input){
     }else{
       filePending++;
       const reader=new FileReader();
-      const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(f.name);
+      const isImage=f.type.startsWith('image/')||/\.(png|jpg|jpeg|gif|svg|webp|bmp|avif|ico)$/i.test(f.name);
       reader.onload=function(){
         if(isImage){
           uploadedImages[f.name]=reader.result.split(',')[1];
         }else{
           uploadedFiles[f.name]=reader.result;
         }
-        fileList.push(f.name);
+        addFileToList(f.name,f.size);
         filePending--;
         if(!filePending){updateFileList();}
       };
@@ -831,26 +837,52 @@ function handleZipFile(f, callback){
 
 function processZipEntry(zipEntry, relativePath){
   return new Promise(function(resolve){
-    const isImage=/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(relativePath);
+    const isImage=/\.(png|jpg|jpeg|gif|svg|webp|bmp|avif|ico)$/i.test(relativePath);
+    const size=zipEntry._data&&zipEntry._data.uncompressedSize||0;
     if(isImage){
       zipEntry.async('base64').then(function(data){
         uploadedImages[relativePath]='data:image/png;base64,'+data;
-        fileList.push(relativePath);
+        addFileToList(relativePath,size);
         resolve();
       });
     }else{
       zipEntry.async('string').then(function(data){
         uploadedFiles[relativePath]=data;
-        fileList.push(relativePath);
+        addFileToList(relativePath,size);
         resolve();
       });
     }
   });
 }
 
+function addFileToList(name,size){
+  fileList=fileList.filter(function(file){return file.name!==name;});
+  fileList.push({name:name,size:size});
+}
+
+function formatFileSize(bytes){
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1048576)return (bytes/1024).toFixed(bytes<10240?1:0)+' KB';
+  return (bytes/1048576).toFixed(bytes<10485760?1:0)+' MB';
+}
+
+function removeUploadedFile(index){
+  const file=fileList[index];
+  if(!file)return;
+  delete uploadedFiles[file.name];
+  delete uploadedImages[file.name];
+  fileList.splice(index,1);
+  document.getElementById('projectFiles').value='';
+  updateFileList();
+}
+
 function updateFileList(){
   let html='';
-  for(const name of fileList){html+='<span>'+name.replace(/</g,'&lt;')+'</span>';}
+  for(let i=0;i<fileList.length;i++){
+    const file=fileList[i];
+    const safeName=file.name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    html+='<div class="file-item"><div class="file-info"><span class="file-name" title="'+safeName+'">'+safeName+'</span><span class="file-size">'+formatFileSize(file.size)+'</span></div><button type="button" class="file-remove" onclick="removeUploadedFile('+i+')" aria-label="Remove '+safeName+'" title="Remove file">&times;</button></div>';
+  }
   if(!uploadedFiles['index.html']&&!uploadedImages['index.html']){html+='<span class="missing">missing: index.html</span>';}
   document.getElementById('fileList').innerHTML=html;
 }

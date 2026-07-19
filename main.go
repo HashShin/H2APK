@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -178,13 +179,39 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Printf("  H2APK — HTML/URL to APK\n")
-		fmt.Printf("  http://localhost:%s\n", port)
+		localURL := "http://localhost:" + port
+		fmt.Printf("  %s\n", localURL)
 		if ip := localIP(); ip != "" {
 			fmt.Printf("  http://%s:%s\n", ip, port)
 		}
 		fmt.Println()
 		saveEnvPort(port)
+		openBrowser(localURL)
 		log.Fatal(http.Serve(listener, nil))
+	}
+}
+
+func openBrowser(url string) {
+	var commands [][]string
+	switch runtime.GOOS {
+	case "windows":
+		commands = [][]string{{"rundll32", "url.dll,FileProtocolHandler", url}}
+	case "darwin":
+		commands = [][]string{{"open", url}}
+	default:
+		commands = [][]string{
+			{"termux-open-url", url},
+			{"xdg-open", url},
+		}
+	}
+
+	for _, command := range commands {
+		if _, err := exec.LookPath(command[0]); err != nil {
+			continue
+		}
+		if err := exec.Command(command[0], command[1:]...).Start(); err == nil {
+			return
+		}
 	}
 }
 

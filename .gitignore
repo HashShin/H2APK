@@ -1,6 +1,7 @@
 # Binaries
-h2apk
-h2a
+/h2apk
+/h2a
+cmd/h2apk/h2apk
 *.exe
 
 # Output

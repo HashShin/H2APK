@@ -210,7 +210,7 @@ done
 
 echo
 if $ALL_OK; then
-  echo -e "  ${GREEN}All dependencies ready. Run: go run main.go${NC}"
+  echo -e "  ${GREEN}All dependencies ready. Run: go run ./cmd/h2apk${NC}"
 else
   warn "Some dependencies are missing. Review output above."
 fi

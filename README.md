@@ -1,8 +1,8 @@
 <p align="center"><img src="https://cdn.jsdelivr.net/gh/HashShin/H2APK@main/assets/images/banner.jpg" alt="H2APK Banner"></p>
 
-<p align="center"><strong>HTML → APK. One click.</strong></p>
+<p align="center"><strong>HTML → APK / AAB. One click.</strong></p>
 
-<p align="center">Paste HTML or a URL.  Get back an Android app.<br>No Android Studio.  No Gradle.  No XML.</p>
+<p align="center">Paste HTML or a URL.  Get back an Android app or Play Store bundle.<br>No Android Studio.  No Gradle.  No XML.</p>
 
 <p align="center">
   <a href="https://h2apk.hashcode.win/">Try it live</a> ·
@@ -33,14 +33,21 @@ H2APK automatically opens `http://localhost:8011` in your browser after startup.
 ## How it works
 
 1. You fill in the form - app name, HTML or URL, icon, optional settings.
-2. The Go server writes an `AndroidManifest.xml`, generates Java sources for a WebView activity, compiles them with `javac`, converts the bytecode to DEX with `d8`, packages everything with `aapt2`, zipaligns, and signs it with an embedded debug keystore.
-3. You download the APK.  The build log streams live over SSE.
+2. Choose **Debug** (default) or **Play Store Release** mode.
+3. The Go server writes an `AndroidManifest.xml`, generates Java sources for a WebView activity, compiles them with `javac`, converts the bytecode to DEX with `d8`, packages everything with `aapt2`, zipaligns, and signs it.
+4. You download the APK (debug) or both an AAB + release APK (Play Store mode).  The build log streams live over SSE.
 
 <details>
 <summary>Build pipeline in detail</summary>
 
+**Debug:**
 ```
-HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 pack → zip add dex → zipalign → apksigner
+HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 pack → zip add dex → zipalign → apksigner (debug key)
+```
+
+**Play Store Release:**
+```
+HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 pack → zip add dex → zipalign → apksigner (your keystore) → bundletool → .aab + -release.apk
 ```
 </details>
 
@@ -76,11 +83,15 @@ HTML/URL → AndroidManifest → Java sources → javac → d8 (dex) → aapt2 p
 - Requests only the permissions your app actually needs
 - URL mode: all three permissions enabled by default (harmless if unused)
 
+**Build modes**
+- **Debug** — instant debug-signed `.apk` for testing. No keystore needed.
+- **Play Store Release** — produces a signed `.aab` for Play Console upload + a `-release.apk` for sideload testing. Requires your own keystore and `tools/bundletool.jar`.
+
 **Build experience**
 - Live build log streaming (SSE)
 - Build status indicator (building → done/failed)
 - Terminal-style log with persistent output
-- Direct APK download link
+- Direct APK / AAB download links
 
 ## Structure
 
@@ -89,7 +100,7 @@ H2APK/
   main.go              - Entire backend: HTTP server, build pipeline, Java codegen
   static/index.html     - Web UI (embedded at build time)
   keystore/              - Debug signing key (embedded at build time)
-  tools/                - Downloaded by setup.sh (gitignored)
+  tools/                - Build tool JARs (android.jar, d8.jar, apksigner.jar, bundletool.jar)
   scripts/testbuild.sh  - Test script (builds URL + HTML APK via curl)
   output/               - Generated APKs
 ```

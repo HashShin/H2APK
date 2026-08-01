@@ -699,6 +699,7 @@ document.addEventListener('keydown',function(e){
   <div class="donation-tabs">
     <button class="donation-tab-btn active" onclick="donationSwitchTab(this,'instapay')">InstaPay</button>
     <button class="donation-tab-btn" onclick="donationSwitchTab(this,'binance')">Binance</button>
+    <button class="donation-tab-btn" onclick="donationSwitchTab(this,'github')">GitHub</button>
   </div>
 
   <div class="donation-panel active" id="donation-panel-instapay">
@@ -735,6 +736,14 @@ document.addEventListener('keydown',function(e){
         </div>
         <p class="donation-deeplink-note">Scan the QR or search the Pay ID in the Binance app. Accepts USDT, BTC, ETH.</p>
       </div>
+    </div>
+  </div>
+
+  <div class="donation-panel" id="donation-panel-github">
+    <div class="donation-method-card" style="text-align:center;padding:24px 16px;">
+      <div class="donation-method-name" style="margin-bottom:8px;">GitHub Sponsors</div>
+      <p class="donation-deeplink-note" style="margin-bottom:16px;">Support this project directly through GitHub Sponsors.</p>
+      <a href="https://github.com/sponsors/HashShin" target="_blank" rel="noopener" class="donation-open-btn" style="text-decoration:none;display:inline-block;">Sponsor on GitHub</a>
     </div>
   </div>
 

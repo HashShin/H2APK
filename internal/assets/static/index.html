@@ -398,6 +398,21 @@ input[type=color]::-webkit-color-swatch{border-radius:6px;border:none}
   #donationOverlay .donation-open-btn{font-size:.64rem;padding:5px 8px;white-space:nowrap}
   #donationOverlay .donation-method-card{flex-direction:column;align-items:flex-start}
 }
+.build-mode-switch{display:flex;gap:0;margin-bottom:24px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:#0d0d0d}
+.bm-btn{flex:1;padding:11px 16px;font-size:.75rem;font-weight:400;color:rgba(255,255,255,0.45);cursor:pointer;background:transparent;transition:all .25s;font-family:inherit;border:none;border-right:1px solid rgba(255,255,255,0.07);text-align:center}
+.bm-btn:last-child{border-right:none}
+.bm-btn.active{background:rgba(255,255,255,0.08);color:#fff}
+.bm-btn:hover:not(.active){color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.03)}
+.release-note{font-size:.7rem;color:rgba(255,255,255,0.4);padding:10px 12px;background:rgba(255,255,255,0.03);border-left:2px solid rgba(255,255,255,0.1);border-radius:0 8px 8px 0;margin-bottom:14px;line-height:1.6}
+.release-note b{color:rgba(255,255,255,0.65)}
+.release-panel{margin-top:16px;padding:16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.07);border-radius:10px;animation:fadeUp .3s ease both}
+.release-panel-title{font-size:.68rem;text-transform:uppercase;letter-spacing:1.2px;color:rgba(255,255,255,0.35);margin-bottom:12px}
+.dl-artifact{display:flex;flex-direction:column;gap:8px}
+.dl-artifact a{display:flex;align-items:center;padding:12px 18px;background:rgba(255,255,255,0.05);color:#ccc;border:1px solid rgba(255,255,255,0.1);border-radius:10px;font-weight:600;text-decoration:none;font-size:.82rem;transition:all .25s;gap:10px}
+.dl-artifact a:hover{background:rgba(255,255,255,0.09);border-color:rgba(255,255,255,0.2)}
+.kind-badge{font-size:.62rem;padding:2px 7px;border-radius:4px;font-weight:700;margin-left:auto;flex-shrink:0}
+.kind-aab{background:rgba(100,200,120,0.12);color:#7dc;border:1px solid rgba(100,200,120,0.2)}
+.kind-apk{background:rgba(120,150,255,0.1);color:#aad;border:1px solid rgba(120,150,255,0.2)}
 </style>
 <script>
 // Donation overlay functions
@@ -472,6 +487,11 @@ document.addEventListener('keydown',function(e){
   </p>
 </div>
 
+<div class="build-mode-switch">
+  <button class="bm-btn active" id="bmDebug" onclick="switchBuildMode('debug')">Debug / Test</button>
+  <button class="bm-btn" id="bmRelease" onclick="switchBuildMode('release')">Play Store Release</button>
+</div>
+
 <div class="mode-tabs">
   <div class="mode-tab active" id="tabHtml" onclick="switchMode('html')">HTML</div>
   <div class="mode-tab" id="tabUrl" onclick="switchMode('url')">Website URL</div>
@@ -493,6 +513,33 @@ document.addEventListener('keydown',function(e){
       <input type="file" id="iconFile" accept="image/png" onchange="previewIcon(this)">
     </div>
   </div>
+  <div id="releasePanel" class="release-panel hidden">
+    <div class="release-panel-title">Play Store Release Settings</div>
+    <div class="release-note">Release builds produce a signed <b>.aab</b> for Play Console upload + a <b>-release.apk</b> for sideload testing.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+      <div style="flex:1 1 120px"><label>Version Code <span style="color:#ff5f57">*</span></label><input type="number" id="versionCode" value="1" min="1" step="1" placeholder="1"></div>
+      <div style="flex:1 1 80px"><label>Min SDK</label><input type="number" id="minSdk" value="24" min="16" step="1"></div>
+      <div style="flex:1 1 80px"><label>Target SDK</label><input type="number" id="targetSdk" value="34" min="16" step="1"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Keystore (.jks/.keystore file or base64) <span style="color:#ff5f57">*</span></label>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button type="button" id="rlKsFileBtn" onclick="toggleRlKsMode('file')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2)">File</button>
+        <button type="button" id="rlKsPasteBtn" onclick="toggleRlKsMode('paste')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:transparent;color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.08)">Paste base64</button>
+      </div>
+      <input type="file" id="rlKeystoreFile" accept=".jks,.keystore" onchange="loadRlKeystore(this)" style="margin-top:6px;color:rgba(255,255,255,0.5);font-size:.7rem">
+      <textarea id="rlKeystoreText" placeholder="Paste base64-encoded keystore here..." style="display:none;margin-top:6px;min-height:80px;font-size:.68rem" oninput="rlKeystoreBase64=this.value.trim()"></textarea>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div style="flex:1 1 120px"><label>Keystore password <span style="color:#ff5f57">*</span></label><input type="password" id="rlKsPass" placeholder="required"></div>
+      <div style="flex:1 1 90px"><label>Key alias <span style="color:#ff5f57">*</span></label><input type="text" id="rlKeyAlias" placeholder="required"></div>
+      <div style="flex:1 1 120px"><label>Key password</label><input type="password" id="rlKeyPass" placeholder="same as keystore"></div>
+    </div>
+    <div class="check-row">
+      <span class="checkbox"><input type="checkbox" id="allowHttp"><svg><use href="#cb-30"></use></svg></span>
+      <label for="allowHttp">Allow HTTP (cleartext) — off by default for Play Store</label>
+    </div>
+  </div>
   <button onclick="document.getElementById('advancedOpts').classList.toggle('hidden');this.textContent=this.textContent==='+ Advanced'?'- Advanced':'+ Advanced'" style="margin-top:14px;padding:4px 10px;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.35);font-size:.7rem;cursor:pointer;font-family:inherit;transition:all .25s"
     onmouseenter="this.style.borderColor='rgba(255,255,255,0.2)';this.style.color='rgba(255,255,255,0.7)'"
     onmouseleave="this.style.borderColor='rgba(255,255,255,0.08)';this.style.color='rgba(255,255,255,0.35)'">+ Advanced</button>
@@ -503,7 +550,7 @@ document.addEventListener('keydown',function(e){
       <input type="text" id="themeHex" value="#1C1C1E" oninput="var c=this.value;if(/^#[0-9a-f]{6}$/i.test(c)){document.getElementById('themeColor').value=c;applyThemeColor(c)}" style="width:90px;background:#000;border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:rgba(255,255,255,0.8);padding:8px 10px;font-size:.72rem;font-family:inherit">
     </div>
     <div class="check-row">
-      <span class="checkbox"><input type="checkbox" id="pullRefresh" checked><svg><use href="#cb-30"></use></svg></span>
+      <span class="checkbox"><input type="checkbox" id="pullRefresh"><svg><use href="#cb-30"></use></svg></span>
       <label for="pullRefresh">Pull-Down Refresh</label>
     </div>
     <div class="check-row">
@@ -561,26 +608,6 @@ document.addEventListener('keydown',function(e){
           <label class="radio-label"><input type="radio" name="splashImgSrc" value="custom" onchange="toggleSplashUpload()"> Custom</label>
         </div>
         <input type="file" id="splashImageFile" accept="image/png" onchange="previewSplash(this)" style="display:none;margin-top:8px;color:rgba(255,255,255,0.5);font-size:.7rem">
-      </div>
-    </div>
-    <div class="check-row">
-      <span class="checkbox"><input type="checkbox" id="releaseSign" onchange="document.getElementById('signOpts').classList.toggle('hidden',!this.checked)"><svg><use href="#cb-30"></use></svg></span>
-      <label for="releaseSign">Release signing (custom keystore)</label>
-    </div>
-    <div id="signOpts" class="hidden" style="margin-top:6px;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;overflow:hidden">
-      <div style="margin-bottom:10px">
-        <label>Keystore (.jks/.keystore file or base64)</label>
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <button type="button" id="ksFileBtn" onclick="toggleKeystoreMode('file')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2)">File</button>
-          <button type="button" id="ksPasteBtn" onclick="toggleKeystoreMode('paste')" style="padding:4px 10px;border-radius:6px;font-size:.68rem;font-family:inherit;cursor:pointer;background:transparent;color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.08)">Paste base64</button>
-        </div>
-        <input type="file" id="keystoreFile" accept=".jks,.keystore" onchange="loadKeystore(this)" style="margin-top:6px;color:rgba(255,255,255,0.5);font-size:.7rem">
-        <textarea id="keystoreText" placeholder="Paste base64-encoded keystore here..." style="display:none;margin-top:6px;min-height:80px;font-size:.68rem" oninput="keystoreBase64=this.value.trim()"></textarea>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        <div style="flex:1 1 120px"><label>Keystore password *</label><input type="password" id="ksPass" placeholder="required"></div>
-        <div style="flex:1 1 90px"><label>Key alias *</label><input type="text" id="keyAlias" placeholder="required"></div>
-        <div style="flex:1 1 120px"><label>Key password</label><input type="password" id="keyPass" placeholder="defaults to keystore password"></div>
       </div>
     </div>
   </div>
@@ -729,7 +756,10 @@ document.addEventListener('keydown',function(e){
 <script>
 let iconBase64='';
 let keystoreBase64='';
+let rlKeystoreBase64='';
 let currentMode='html';
+let buildMode='debug';
+let rlKsMode='file';
 let uploadedFiles={};
 let uploadedImages={};
 
@@ -766,6 +796,36 @@ function loadKeystore(input){
   reader.onload=function(){keystoreBase64=reader.result.split(',')[1]};
   reader.readAsDataURL(f);
   document.getElementById('keystoreText').value='';
+}
+
+function switchBuildMode(m){
+  buildMode=m;
+  document.getElementById('bmDebug').classList.toggle('active',m==='debug');
+  document.getElementById('bmRelease').classList.toggle('active',m==='release');
+  document.getElementById('releasePanel').classList.toggle('hidden',m!=='release');
+  document.getElementById('btn').textContent=m==='release'?'Build APK + AAB':'Build APK';
+}
+
+function toggleRlKsMode(m){
+  rlKsMode=m;
+  const fb=document.getElementById('rlKsFileBtn'),pb=document.getElementById('rlKsPasteBtn');
+  fb.style.background=m==='file'?'rgba(255,255,255,0.1)':'transparent';
+  fb.style.color=m==='file'?'#fff':'rgba(255,255,255,0.4)';
+  fb.style.borderColor=m==='file'?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.08)';
+  pb.style.background=m==='paste'?'rgba(255,255,255,0.1)':'transparent';
+  pb.style.color=m==='paste'?'#fff':'rgba(255,255,255,0.4)';
+  pb.style.borderColor=m==='paste'?'rgba(255,255,255,0.2)':'rgba(255,255,255,0.08)';
+  document.getElementById('rlKeystoreFile').style.display=m==='file'?'block':'none';
+  document.getElementById('rlKeystoreText').style.display=m==='paste'?'block':'none';
+}
+
+function loadRlKeystore(input){
+  const f=input.files[0];
+  if(!f){rlKeystoreBase64='';return}
+  const reader=new FileReader();
+  reader.onload=function(){rlKeystoreBase64=reader.result.split(',')[1];};
+  reader.readAsDataURL(f);
+  document.getElementById('rlKeystoreText').value='';
 }
 
 let splashImageBase64='';
@@ -959,29 +1019,41 @@ async function build(){
     }
     console.log('Total asset_files:', Object.keys(body.asset_files).length);
   }
-  if(document.getElementById('releaseSign').checked){
-    if(!keystoreBase64){
+  body.build_mode=buildMode;
+  if(buildMode==='release'){
+    const vc=parseInt(document.getElementById('versionCode').value)||0;
+    if(vc<1){
       st.className='failed';
-      st.innerHTML='<span class="pulse-dot"></span>Keystore file or base64 is required';
+      st.innerHTML='<span class="pulse-dot"></span>Version Code must be a positive integer';
       btn.disabled=false;
       return;
     }
-    if(!document.getElementById('ksPass').value){
+    if(!rlKeystoreBase64){
+      st.className='failed';
+      st.innerHTML='<span class="pulse-dot"></span>Keystore file or base64 is required for release';
+      btn.disabled=false;
+      return;
+    }
+    if(!document.getElementById('rlKsPass').value){
       st.className='failed';
       st.innerHTML='<span class="pulse-dot"></span>Keystore password is required';
       btn.disabled=false;
       return;
     }
-    if(!document.getElementById('keyAlias').value){
+    if(!document.getElementById('rlKeyAlias').value){
       st.className='failed';
       st.innerHTML='<span class="pulse-dot"></span>Key alias is required';
       btn.disabled=false;
       return;
     }
-    body.keystore=keystoreBase64;
-    body.ks_pass=document.getElementById('ksPass').value;
-    body.key_alias=document.getElementById('keyAlias').value;
-    body.key_pass=document.getElementById('keyPass').value;
+    body.version_code=vc;
+    body.min_sdk=parseInt(document.getElementById('minSdk').value)||24;
+    body.target_sdk=parseInt(document.getElementById('targetSdk').value)||34;
+    body.keystore=rlKeystoreBase64;
+    body.ks_pass=document.getElementById('rlKsPass').value;
+    body.key_alias=document.getElementById('rlKeyAlias').value;
+    body.key_pass=document.getElementById('rlKeyPass').value;
+    body.allow_cleartext=document.getElementById('allowHttp').checked;
   }
   if(currentMode==='html'){
     body.html=document.getElementById('html').value;
@@ -1039,7 +1111,22 @@ function streamLog(id){
   es.addEventListener('done',function(e){
     es.close();
     st.className='done';st.innerHTML='<span class="pulse-dot"></span>Build complete!';
-    dl.innerHTML='<a href="/api/download/'+id+'" download>Download '+e.data+'</a>';
+    let artifacts;
+    try{artifacts=JSON.parse(e.data);}catch(ex){artifacts=null;}
+    if(Array.isArray(artifacts)&&artifacts.length){
+      let h='<div class="dl-artifact">';
+      for(const a of artifacts){
+        const isAAB=a.kind==='aab';
+        const label=isAAB?'Upload to Play Console':'Test install (APK)';
+        const kindCls=isAAB?'kind-aab':'kind-apk';
+        const kindLabel=isAAB?'AAB':'APK';
+        h+='<a href="/api/download-file/'+id+'/'+a.name+'" download>'+label+' \u2014 '+a.name+'<span class="kind-badge '+kindCls+'">'+kindLabel+'</span></a>';
+      }
+      h+='</div>';
+      dl.innerHTML=h;
+    }else{
+      dl.innerHTML='<a href="/api/download/'+id+'" download>Download '+e.data+'</a>';
+    }
     dl.className='dl-box';dl.style.display='block';
     window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
     btn.disabled=false;

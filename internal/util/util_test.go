@@ -169,6 +169,46 @@ func TestCopyFile(t *testing.T) {
 	}
 }
 
+func TestSelectionAccentColor(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		// Very dark — must be lightened.
+		{"#1C1C1E"},
+		{"#000000"},
+		{"#111111"},
+		// Medium-bright — should stay close to original.
+		{"#888888"},
+		{"#AAAAAA"},
+		// Already bright — unchanged.
+		{"#FFFFFF"},
+		{"#FF8800"},
+		// No hash prefix.
+		{"1C1C1E"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := SelectionAccentColor(tt.input)
+			if got == "" {
+				t.Error("result is empty")
+			}
+			if got[0] != '#' {
+				t.Errorf("result should start with #: %s", got)
+			}
+		})
+	}
+
+	// Verify dark colours are lightened.
+	if got := SelectionAccentColor("#1C1C1E"); got == "#1C1C1E" {
+		t.Error("dark #1C1C1E should be lightened")
+	}
+	// Verify bright colours are unchanged.
+	if got := SelectionAccentColor("#FFFFFF"); got != "#FFFFFF" {
+		t.Errorf("bright #FFFFFF should be unchanged, got %s", got)
+	}
+}
+
 func BenchmarkNavColor(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		NavBarColor(false, "0x1B1B1F")

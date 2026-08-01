@@ -47,6 +47,9 @@ func (r *Resolver) FindLocalOrSystem(localPath, configKey, systemPath string) st
 	if configKey == "apksigner_jar" && cfg.ApkSignerJar != "" {
 		return cfg.ApkSignerJar
 	}
+	if configKey == "bundletool_jar" && cfg.BundletoolJar != "" {
+		return cfg.BundletoolJar
+	}
 	return systemPath
 }
 
@@ -75,13 +78,15 @@ func (r *Resolver) FindAndroidJar() string {
 // CheckDeps prints a dependency availability table at startup.
 func (r *Resolver) CheckDeps() {
 	type dep struct {
-		name string
-		path string
-		ok   bool
+		name     string
+		path     string
+		ok       bool
+		optional bool
 	}
 	deps := []dep{
 		{name: "javac"},
 		{name: "java"},
+		{name: "jarsigner"},
 		{name: "aapt2"},
 		{name: "zipalign"},
 		{name: "zip"},
@@ -97,6 +102,7 @@ func (r *Resolver) CheckDeps() {
 	jarDeps := []dep{
 		{name: "d8.jar", path: r.FindLocalOrSystem("tools/d8.jar", "d8_jar", "/data/data/com.termux/files/usr/share/java/d8.jar")},
 		{name: "apksigner.jar", path: r.FindLocalOrSystem("tools/apksigner.jar", "apksigner_jar", "/data/data/com.termux/files/usr/share/java/apksigner.jar")},
+		{name: "bundletool.jar (release only)", path: r.FindLocalOrSystem("tools/bundletool.jar", "bundletool_jar", ""), optional: true},
 	}
 	for i, d := range jarDeps {
 		if _, err := os.Stat(d.path); err == nil {
@@ -120,7 +126,11 @@ func (r *Resolver) CheckDeps() {
 		if !d.ok {
 			mark = "✗"
 		}
-		fmt.Printf("  %s %-12s %s\n", mark, d.name, d.path)
+		suffix := ""
+		if d.optional && !d.ok {
+			suffix = " (optional)"
+		}
+		fmt.Printf("  %s %-12s %s%s\n", mark, d.name, d.path, suffix)
 	}
 	ajMark := "✓"
 	if androidJar == "" {
@@ -135,7 +145,7 @@ func (r *Resolver) CheckDeps() {
 		}
 	}
 	for _, d := range jarDeps {
-		if !d.ok {
+		if !d.ok && !d.optional {
 			missing++
 		}
 	}

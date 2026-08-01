@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -111,21 +112,22 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
 
 	// 1c. styles.xml
 	{
+		themeHex := req.ThemeColor
+		if themeHex == "" {
+			themeHex = "#1C1C1E"
+		}
+		if len(themeHex) > 0 && themeHex[0] == '#' {
+			themeHex = themeHex[1:]
+		}
 		windowBgXml := "#FF000000"
 		if isURL {
-			hex := req.ThemeColor
-			if hex == "" {
-				hex = "#1C1C1E"
-			}
-			if len(hex) > 0 && hex[0] == '#' {
-				hex = hex[1:]
-			}
-			if len(hex) == 6 {
-				windowBgXml = "#FF" + hex
-			} else if len(hex) == 8 {
-				windowBgXml = "#" + hex
+			if len(themeHex) == 6 {
+				windowBgXml = "#FF" + themeHex
+			} else if len(themeHex) == 8 {
+				windowBgXml = "#" + themeHex
 			}
 		}
+		accentColor := util.SelectionAccentColor("#" + themeHex)
 		valuesDir := filepath.Join(proj, "res", "values")
 		os.MkdirAll(valuesDir, 0755)
 		os.MkdirAll(flatDir, 0755)
@@ -135,6 +137,8 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
   <style name="AppTheme" parent="@android:style/Theme.NoTitleBar">
     <item name="android:windowBackground">` + windowBgXml + `</item>
     <item name="android:windowNoTitle">true</item>
+    <item name="android:colorAccent">` + accentColor + `</item>
+    <item name="android:colorControlActivated">` + accentColor + `</item>
   </style>
 </resources>`
 		os.WriteFile(stylesPath, []byte(stylesXml), 0644)
@@ -345,12 +349,37 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
 		util.WriteFile(filepath.Join(srcDir, "NotificationHelper.java"), codegen.GenNotificationHelperSrc())
 	}
 
+	navBarInit := ""
+	navBarFlags := "android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE"
+	navBarInsetFix := ""
+	if req.TransparentNavBar {
+		// Make the bottom navigation bar transparent and let the page draw
+		// edge-to-edge underneath it. LAYOUT_HIDE_NAVIGATION lays the content
+		// out behind the bottom nav bar WITHOUT hiding it (the status bar is
+		// untouched — that would require LAYOUT_FULLSCREEN). The contrast scrim
+		// that Android 10+ enforces over transparent bars is disabled so the
+		// bar is truly see-through.
+		navBarInit = "getWindow().setNavigationBarColor((int)0L);\n" +
+			"      if (android.os.Build.VERSION.SDK_INT >= 29) { getWindow().setNavigationBarContrastEnforced(false); }"
+		navBarFlags = "android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION"
+		// Because the window now lays out edge-to-edge, pad ONLY the top by the
+		// status-bar height so page content stays below the status bar (top
+		// untouched) while still drawing under the transparent bottom nav bar
+		// (bottom padding stays 0). Done statically (no inset listener) to keep
+		// the generated class free of anonymous inner classes.
+		navBarInsetFix = "int h2aSbh = 0; " +
+			"int h2aSbId = getResources().getIdentifier(\"status_bar_height\", \"dimen\", \"android\"); " +
+			"if (h2aSbId > 0) h2aSbh = getResources().getDimensionPixelSize(h2aSbId); " +
+			"fl.setPadding(0, h2aSbh, 0, 0);"
+	}
+
 	params := codegen.WebViewActivityParams{
 		PermImports:           "\nimport android.Manifest;\nimport android.content.pm.PackageManager;",
 		DisableCopyImplements: ", android.view.View.OnLongClickListener",
 		IndicatorField:        indicatorField,
 		PermFields:            "",
 		FlBg:                  themeColorStr,
+		WebDebug:              req.BuildMode != "release",
 		ThemeColorInt:         themeColorInt,
 		HideScrollbars:        req.HideScrollbars,
 		GeoPermission:         req.GeoPermission,
@@ -383,6 +412,9 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
     requestPermissions(new String[]{perm}, code);
   }`,
 		FileChooserMethods: fileChooserMethods,
+		NavBarInit:         navBarInit,
+		NavBarFlags:        navBarFlags,
+		NavBarInsetFix:     navBarInsetFix,
 	}
 	util.WriteFile(filepath.Join(srcDir, "WebViewActivity.java"), codegen.GenWebViewActivitySrc(params))
 
@@ -439,15 +471,30 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
 	d8Args = append(d8Args, classFiles...)
 	run(rec, "java", d8Args, logf)
 
+	// Effective build parameters (with fallbacks).
+	release := req.BuildMode == "release"
+	versionCode := req.VersionCode
+	if versionCode < 1 {
+		versionCode = 1
+	}
+	minSDK := req.MinSDK
+	if minSDK < 1 {
+		minSDK = 21
+	}
+	targetSDK := req.TargetSDK
+	if targetSDK < 1 {
+		targetSDK = 34
+	}
+
 	// 7. aapt2 link
 	logf("Packaging APK")
 	unsigned := filepath.Join(work, "unsigned.apk")
 	aaptArgs := []string{"link",
 		"--manifest", filepath.Join(proj, "AndroidManifest.xml"),
-		"--version-code", "1",
-		"--version-name", util.VersionName(req.VersionCode),
-		"--min-sdk-version", "21",
-		"--target-sdk-version", "34",
+		"--version-code", strconv.Itoa(versionCode),
+		"--version-name", util.VersionName(req.VersionName),
+		"--min-sdk-version", strconv.Itoa(minSDK),
+		"--target-sdk-version", strconv.Itoa(targetSDK),
 		"--auto-add-overlay",
 		"-o", unsigned,
 	}
@@ -477,7 +524,22 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
 	ksPass := "pass:h2ah2a"
 	keyAlias := "h2a"
 	keyPass := "pass:h2ah2a"
-	if req.KeystoreBase64 != "" {
+	if release {
+		logf("Using custom keystore for release signing")
+		ksData, err := base64.StdEncoding.DecodeString(req.KeystoreBase64)
+		if err != nil {
+			fail(rec, "failed to decode keystore: "+err.Error())
+		}
+		ks = filepath.Join(work, "custom.keystore")
+		os.WriteFile(ks, ksData, 0644)
+		ksPass = "pass:" + req.KeystorePass
+		keyAlias = req.KeyAlias
+		if req.KeyPass != "" {
+			keyPass = "pass:" + req.KeyPass
+		} else {
+			keyPass = ksPass
+		}
+	} else if req.KeystoreBase64 != "" {
 		logf("Using custom keystore")
 		if req.KeystorePass == "" {
 			fail(rec, "keystore password is required for release signing")
@@ -508,11 +570,34 @@ func (b *Builder) Build(id string, req types.BuildRequest, isURL bool) {
 	}, logf)
 
 	// 11. finalize
-	final := util.SafeName(req.AppName) + ".apk"
-	util.CopyFile(filepath.Join(b.BaseDir, "output", final), signed)
-	rec.Status = "done"
-	rec.APKName = final
-	logf("Done: %s", final)
+	safeName := util.SafeName(req.AppName)
+	if release {
+		// Release: produce a release-signed APK (for sideload testing) and an AAB (for Play upload).
+		apkName := safeName + "-release.apk"
+		util.CopyFile(filepath.Join(b.BaseDir, "output", apkName), signed)
+
+		// Build the AAB.
+		aabName := safeName + ".aab"
+		bundletoolJar := b.Cfg.FindLocalOrSystem("tools/bundletool.jar", "bundletool_jar", "")
+		buildAAB(b.BaseDir, work, proj, assets, androidJar, flatFiles, dexPath,
+			req, versionCode, minSDK, targetSDK, ks, ksPass, keyAlias, keyPass,
+			bundletoolJar, aabName, rec, logf)
+
+		rec.Status = "done"
+		rec.APKName = aabName
+		rec.Artifacts = []types.Artifact{
+			{Name: aabName, Kind: "aab"},
+			{Name: apkName, Kind: "apk"},
+		}
+		logf("Done: %s + %s", aabName, apkName)
+	} else {
+		final := safeName + ".apk"
+		util.CopyFile(filepath.Join(b.BaseDir, "output", final), signed)
+		rec.Status = "done"
+		rec.APKName = final
+		rec.Artifacts = []types.Artifact{{Name: final, Kind: "apk"}}
+		logf("Done: %s", final)
+	}
 }
 
 func run(rec *Record, name string, args []string, logf func(string, ...interface{})) {

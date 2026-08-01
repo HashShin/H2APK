@@ -13,6 +13,7 @@ type WebViewActivityParams struct {
 	IndicatorField        string
 	PermFields            string
 	FlBg                  string
+	WebDebug              bool
 	ThemeColorInt         int
 	HideScrollbars        bool
 	GeoPermission         bool
@@ -30,6 +31,9 @@ type WebViewActivityParams struct {
 	DisableCopyMethod     string
 	PermMethods           string
 	FileChooserMethods    string
+	NavBarInit            string
+	NavBarFlags           string
+	NavBarInsetFix        string
 }
 
 // genChromeClientSrc returns the full source of H2AChromeClient.java.
@@ -442,8 +446,6 @@ import android.content.Context;
 import android.widget.Toast;
 import android.widget.TextView;
 import android.view.Gravity;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.Typeface;
 import android.view.MotionEvent;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -453,8 +455,6 @@ import android.webkit.ValueCallback;%s
 public class WebViewActivity extends Activity implements DownloadListener%s {
   private WebView wv;
   private H2AChromeClient chromeClient;
-  private long lastBackPress = 0;
-  private Toast toast;
   private ValueCallback<Uri[]> filePathCallback;
   private static final int H2A_FILE_CHOOSER_REQ = 3001;
   %s
@@ -464,10 +464,11 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     getWindow().getDecorView().setBackgroundColor(%s);
-    try { WebView.setWebContentsDebuggingEnabled(true); } catch (Exception ignored) {}
+    try { WebView.setWebContentsDebuggingEnabled(%t); } catch (Exception ignored) {}
     if (android.os.Build.VERSION.SDK_INT >= 21) {
       getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
       getWindow().setStatusBarColor((int)%dL);
+      %s
     }
     wv = new WebView(this);
     wv.setBackgroundColor(%s);
@@ -510,13 +511,14 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
     %s
     %s
     %s
+    %s
     setContentView(fl);
     applySystemUI();
   }
 
   private void applySystemUI() {
     if (android.os.Build.VERSION.SDK_INT < 19) return;
-    int flags = android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+    int flags = %s;
     if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
       flags |= android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
              | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -540,34 +542,12 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
       wv.goBack();
       return;
     }
-    long now = System.currentTimeMillis();
-    if (now - lastBackPress < 2000) {
-      if (toast != null) toast.cancel();
-      super.onBackPressed();
-      return;
-    }
-    lastBackPress = now;
-    GradientDrawable bg = new GradientDrawable();
-    bg.setCornerRadius(40);
-    bg.setColor(0xDD1B1B1F);
-    TextView tv = new TextView(this);
-    tv.setText("Tap again to exit");
-    tv.setTextColor(0xFFFFFFFF);
-    tv.setTextSize(15);
-    tv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-    tv.setPadding(48, 28, 48, 28);
-    tv.setBackground(bg);
-    toast = new Toast(this);
-    toast.setView(tv);
-    toast.setGravity(Gravity.TOP, 0, 0);
-    toast.setDuration(Toast.LENGTH_SHORT);
-    toast.show();
+    super.onBackPressed();
   }
 
   @Override
   protected void onPause() {
     super.onPause();
-    if (toast != null) toast.cancel();
   }
 
   @Override
@@ -611,7 +591,7 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
 }`,
 		p.PermImports, p.DisableCopyImplements,
 		p.IndicatorField, p.PermFields,
-		p.FlBg, p.ThemeColorInt, p.FlBg,
+		p.FlBg, p.WebDebug, p.ThemeColorInt, p.NavBarInit, p.FlBg,
 		!p.HideScrollbars, !p.HideScrollbars,
 		p.GeoPermission,
 		p.PermSettings,
@@ -620,7 +600,8 @@ public class WebViewActivity extends Activity implements DownloadListener%s {
 		p.ClientCreate, p.ThemeColorInt,
 		p.NotifInterface, p.AssetInit,
 		p.LoadURL, p.FlBg,
-		p.PullInit, p.PermOnCreate, p.DisableCopyInit,
+		p.PullInit, p.PermOnCreate, p.DisableCopyInit, p.NavBarInsetFix,
+		p.NavBarFlags,
 		p.DisableCopyMethod, p.PermMethods, p.FileChooserMethods,
 	)
 }

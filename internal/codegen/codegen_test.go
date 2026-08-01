@@ -53,6 +53,34 @@ func TestGenAndroidManifest(t *testing.T) {
 	}
 }
 
+func TestGenAndroidManifestAllowCleartext(t *testing.T) {
+	reqOn := types.BuildRequest{PackageName: "com.test.app", AllowCleartext: true}
+	mOn := GenAndroidManifest(reqOn, false)
+	if !strings.Contains(mOn, `android:usesCleartextTraffic="true"`) {
+		t.Error("AllowCleartext=true: expected usesCleartextTraffic=true in manifest")
+	}
+
+	reqOff := types.BuildRequest{PackageName: "com.test.app", AllowCleartext: false}
+	mOff := GenAndroidManifest(reqOff, false)
+	if !strings.Contains(mOff, `android:usesCleartextTraffic="false"`) {
+		t.Error("AllowCleartext=false: expected usesCleartextTraffic=false in manifest")
+	}
+}
+
+func TestGenWebViewActivityWebDebug(t *testing.T) {
+	paramsOn := WebViewActivityParams{WebDebug: true}
+	srcOn := GenWebViewActivitySrc(paramsOn)
+	if !strings.Contains(srcOn, "setWebContentsDebuggingEnabled(true)") {
+		t.Error("WebDebug=true: expected setWebContentsDebuggingEnabled(true) in source")
+	}
+
+	paramsOff := WebViewActivityParams{WebDebug: false}
+	srcOff := GenWebViewActivitySrc(paramsOff)
+	if !strings.Contains(srcOff, "setWebContentsDebuggingEnabled(false)") {
+		t.Error("WebDebug=false: expected setWebContentsDebuggingEnabled(false) in source")
+	}
+}
+
 func TestGenJavaFile(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "h2apk-test-*")
 	if err != nil {

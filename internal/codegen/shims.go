@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"h2apk/internal/types"
+	"h2apk/internal/util"
 	"fmt"
 	"strings"
 )
@@ -223,7 +224,8 @@ func WrapHTML(req types.BuildRequest) string {
 	if req.CSS != "" {
 		css += "\n  " + req.CSS
 	}
-	css = "\n  <style>\n  body{margin:0;color:#ffffff}\n" + css + "\n  </style>"
+	selColor := util.SelectionAccentColor(req.ThemeColor)
+	css = "\n  <style>\n  body{margin:0;color:#ffffff}\n  ::selection{background:" + selColor + ";color:#ffffff}\n  ::-webkit-selection{background:" + selColor + ";color:#ffffff}\n" + css + "\n  </style>"
 	notifShim := ""
 	if req.NotifPermission {
 		notifShim = notifShimScript()

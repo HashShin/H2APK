@@ -1,14 +1,19 @@
 package build
 
-import "sync"
+import (
+	"sync"
+
+	"h2apk/internal/types"
+)
 
 // Record tracks the state of a single APK build.
 type Record struct {
-	Status  string
-	APKName string
-	Err     string
-	Log     string
-	LogCh   chan string
+	Status    string
+	APKName   string
+	Artifacts []types.Artifact
+	Err       string
+	Log       string
+	LogCh     chan string
 }
 
 // Registry is a concurrency-safe store of in-progress and completed builds.

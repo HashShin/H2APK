@@ -53,10 +53,10 @@ func GenAndroidManifest(req types.BuildRequest, hasIcon bool) string {
 	}
 
 	m += fmt.Sprintf(`
-  <application android:label="%s"%s android:usesCleartextTraffic="true">
+  <application android:label="%s"%s android:usesCleartextTraffic="%t">
 %s
   </application>
-</manifest>`, util.XmlEscape(req.AppName), iconAttr, splashActivity)
+</manifest>`, util.XmlEscape(req.AppName), iconAttr, req.AllowCleartext, splashActivity)
 
 	return m
 }

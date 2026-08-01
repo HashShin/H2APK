@@ -7,7 +7,6 @@ cmd/h2apk/h2apk
 # Output
 output/
 tmp/
-tools/
 
 # IDE
 .idea/

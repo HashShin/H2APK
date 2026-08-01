@@ -25,6 +25,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/build", s.handleBuild)
 	mux.HandleFunc("/api/status/", s.handleStatus)
 	mux.HandleFunc("/api/download/", s.handleDownload)
+	mux.HandleFunc("/api/download-file/", s.handleDownloadNamed)
 	mux.HandleFunc("/api/log/", s.handleLogStream)
 }
 
@@ -57,6 +58,23 @@ func (s *Server) handleBuild(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(req.PackageName, ".") {
 		http.Error(w, "invalid package name: must contain at least one dot (e.g. com.example.app)", 400)
 		return
+	}
+
+	if req.BuildMode == "" {
+		req.BuildMode = "debug"
+	}
+	if req.BuildMode == "debug" {
+		req.AllowCleartext = true
+	}
+	if req.BuildMode == "release" {
+		if req.VersionCode < 1 {
+			util.WriteJSON(w, 400, types.BuildInfo{Success: false, Error: "release build requires version_code >= 1"})
+			return
+		}
+		if req.KeystoreBase64 == "" || req.KeystorePass == "" || req.KeyAlias == "" {
+			util.WriteJSON(w, 400, types.BuildInfo{Success: false, Error: "release build requires keystore, keystore_pass, and key_alias"})
+			return
+		}
 	}
 
 	id := util.NewID()
@@ -100,11 +118,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.WriteJSON(w, 200, types.BuildInfo{
-		Success: rec.Status == "done",
-		BuildID: id,
-		APKName: rec.APKName,
-		Error:   rec.Err,
-		Log:     rec.Log,
+		Success:   rec.Status == "done",
+		BuildID:   id,
+		APKName:   rec.APKName,
+		Artifacts: rec.Artifacts,
+		Error:     rec.Err,
+		Log:       rec.Log,
 	})
 }
 
@@ -139,7 +158,8 @@ func (s *Server) handleLogStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if rec.Status == "done" {
-		fmt.Fprintf(w, "event: done\ndata: %s\n\n", rec.APKName)
+		artifactsJSON, _ := json.Marshal(rec.Artifacts)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", artifactsJSON)
 	} else {
 		fmt.Fprintf(w, "event: failed\ndata: %s\n\n", rec.Err)
 	}
@@ -160,5 +180,55 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/vnd.android.package-archive")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, rec.APKName))
+	http.ServeFile(w, r, p)
+}
+
+func (s *Server) handleDownloadNamed(w http.ResponseWriter, r *http.Request) {
+	// Path: /api/download-file/{id}/{filename}
+	rest := strings.TrimPrefix(r.URL.Path, "/api/download-file/")
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		http.Error(w, "bad path", http.StatusBadRequest)
+		return
+	}
+	id, filename := rest[:slash], rest[slash+1:]
+
+	// Reject path traversal attempts.
+	if strings.Contains(filename, "/") || strings.Contains(filename, "..") {
+		http.Error(w, "invalid filename", http.StatusBadRequest)
+		return
+	}
+
+	rec, ok := s.Reg.Get(id)
+	if !ok || rec.Status != "done" {
+		http.Error(w, "not ready", http.StatusNotFound)
+		return
+	}
+
+	// Ensure filename is in the build's artifact list.
+	allowed := false
+	for _, a := range rec.Artifacts {
+		if a.Name == filename {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	p := filepath.Join(s.Builder.BaseDir, "output", filename)
+	if _, err := os.Stat(p); err != nil {
+		http.Error(w, "file missing", http.StatusNotFound)
+		return
+	}
+
+	ct := "application/vnd.android.package-archive"
+	if strings.HasSuffix(filename, ".aab") {
+		ct = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	http.ServeFile(w, r, p)
 }

@@ -1148,9 +1148,31 @@ function streamLog(id){
   });
   es.onerror=function(){
     es.close();
-    st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Connection lost';
-    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
-    btn.disabled=false;
+    // Poll status once — the build may have completed even if SSE dropped.
+    fetch('/api/status/'+id).then(function(r){return r.json();}).then(function(d){
+      if(d.success&&Array.isArray(d.artifacts)&&d.artifacts.length){
+        st.className='done';st.innerHTML='<span class="pulse-dot"></span>Build complete!';
+        let h='<div class="dl-artifact">';
+        for(const a of d.artifacts){
+          const isAAB=a.kind==='aab';
+          const label=isAAB?'Upload to Play Console':'Test install (APK)';
+          const kindCls=isAAB?'kind-aab':'kind-apk';
+          const kindLabel=isAAB?'AAB':'APK';
+          h+='<a href="/api/download-file/'+id+'/'+a.name+'" download>'+label+' \u2014 '+a.name+'<span class="kind-badge '+kindCls+'">'+kindLabel+'</span></a>';
+        }
+        h+='</div>';
+        dl.innerHTML=h;
+        dl.className='dl-box';dl.style.display='block';
+      } else {
+        st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Connection lost';
+      }
+      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+      btn.disabled=false;
+    }).catch(function(){
+      st.className='failed';st.innerHTML='<span class="pulse-dot"></span>Connection lost';
+      window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+      btn.disabled=false;
+    });
   };
 }
 
